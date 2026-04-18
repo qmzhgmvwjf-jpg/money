@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pymongo import MongoClient
 from pydantic import BaseModel
 from bson import ObjectId
@@ -8,6 +9,10 @@ from passlib.context import CryptContext
 
 app = FastAPI()
 
+@app.get("/")
+def home():
+    return {"message": "server running"}
+
 # =========================
 # 🔐 설정
 # =========================
@@ -15,6 +20,7 @@ SECRET_KEY = "mysecretkey"
 ALGORITHM = "HS256"
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+security = HTTPBearer()
 
 # =========================
 # CORS
@@ -30,7 +36,7 @@ app.add_middleware(
 # =========================
 # DB
 # =========================
-client = MongoClient("mongodb://localhost:27017")
+client = MongoClient("mongodb+srv://jaehoon1290:<wogns0416>@cluster0.iv4hqh8.mongodb.net/?appName=Cluster0")
 db = client["delivery"]
 
 # =========================
@@ -53,6 +59,18 @@ users = [
 ]
 
 # =========================
+# 🔐 토큰 검증
+# =========================
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+# =========================
 # 로그인
 # =========================
 @app.post("/login")
@@ -71,10 +89,13 @@ def login(data: LoginData):
     return {"token": token, "role": user["role"]}
 
 # =========================
-# 주문 생성
+# 주문 생성 (관리자만)
 # =========================
 @app.post("/orders")
-def create_order(order: Order):
+def create_order(order: Order, user=Depends(get_current_user)):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Not allowed")
+
     data = {
         "store": order.store,
         "address": order.address,
@@ -85,10 +106,10 @@ def create_order(order: Order):
     return {"message": "ok"}
 
 # =========================
-# 주문 조회
+# 주문 조회 (로그인 필요)
 # =========================
 @app.get("/orders")
-def get_orders():
+def get_orders(user=Depends(get_current_user)):
     orders = []
 
     for o in db.orders.find():
@@ -103,24 +124,35 @@ def get_orders():
     return orders
 
 # =========================
-# 수락 (🔥 driver 저장)
+# 수락 (기사만)
 # =========================
 @app.post("/orders/{order_id}/accept")
-def accept_order(order_id: str, username: str):
+def accept_order(order_id: str, user=Depends(get_current_user)):
+    if user["role"] != "driver":
+        raise HTTPException(status_code=403, detail="Not allowed")
+
     db.orders.update_one(
         {"_id": ObjectId(order_id)},
         {"$set": {
             "status": "accepted",
-            "driver_id": username
+            "driver_id": user["username"]
         }}
     )
     return {"message": "accepted"}
 
 # =========================
-# 완료
+# 완료 (자기 주문만)
 # =========================
 @app.post("/orders/{order_id}/complete")
-def complete_order(order_id: str):
+def complete_order(order_id: str, user=Depends(get_current_user)):
+    order = db.orders.find_one({"_id": ObjectId(order_id)})
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if order.get("driver_id") != user["username"]:
+        raise HTTPException(status_code=403, detail="Not your order")
+
     db.orders.update_one(
         {"_id": ObjectId(order_id)},
         {"$set": {"status": "completed"}}
