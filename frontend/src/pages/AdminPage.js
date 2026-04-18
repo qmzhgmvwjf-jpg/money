@@ -6,14 +6,12 @@ function AdminPage() {
   const [address, setAddress] = useState("");
 
   const createOrder = async () => {
-    await API.post("/orders", {
-      store,
-      address
-    });
-
-    alert("주문 생성 완료");
-    setStore("");
-    setAddress("");
+    try {
+      await API.post("/orders", { store, address });
+      alert("주문 생성 완료");
+    } catch {
+      alert("권한 없음 또는 오류");
+    }
   };
 
   return (
@@ -22,19 +20,15 @@ function AdminPage() {
 
       <input
         placeholder="가게명"
-        value={store}
         onChange={(e) => setStore(e.target.value)}
       />
 
       <input
         placeholder="주소"
-        value={address}
         onChange={(e) => setAddress(e.target.value)}
       />
 
-      <button onClick={createOrder}>
-        주문 생성
-      </button>
+      <button onClick={createOrder}>주문 생성</button>
     </div>
   );
 }
