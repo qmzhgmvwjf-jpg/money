@@ -15,7 +15,7 @@ function LoginPage() {
       if (role === "admin") navigate("/admin");
       else navigate("/rider");
     }
-  }, []);
+  }, [navigate]);
 
   const login = async () => {
     try {
