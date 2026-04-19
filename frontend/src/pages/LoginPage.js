@@ -32,13 +32,24 @@ function LoginPage() {
   };
 
   return (
-    <div className="container">
-      <h2>🚚 배달 서비스</h2>
+    <div className="login-container">
+      <div className="login-card">
+        <h2 className="login-title">🚚 Delivery App</h2>
 
-      <div className="card">
-        <input placeholder="아이디" onChange={(e)=>setUsername(e.target.value)} />
-        <input type="password" placeholder="비밀번호" onChange={(e)=>setPassword(e.target.value)} />
-        <button className="btn-primary" onClick={login}>로그인</button>
+        <input
+          placeholder="아이디"
+          onChange={(e) => setUsername(e.target.value)}
+        />
+
+        <input
+          type="password"
+          placeholder="비밀번호"
+          onChange={(e) => setPassword(e.target.value)}
+        />
+
+        <button className="login-btn" onClick={login}>
+          로그인
+        </button>
       </div>
     </div>
   );
