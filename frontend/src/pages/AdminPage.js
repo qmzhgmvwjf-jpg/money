@@ -1,57 +1,64 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import API from "../api";
+import { useNavigate } from "react-router-dom";
 
 function AdminPage() {
+  const navigate = useNavigate();
+
   const [store, setStore] = useState("");
   const [address, setAddress] = useState("");
   const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // 로그아웃
-  const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("role");
-    window.location.href = "/";
-  };
+  // 🔐 접근 보호
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const role = localStorage.getItem("role");
 
-  // 주문 가져오기
+    if (!token || role !== "admin") {
+      navigate("/");
+    }
+  }, [navigate]);
+
+  // 📦 주문 불러오기
   const fetchOrders = async () => {
     try {
       const res = await API.get("/orders");
       setOrders(res.data);
     } catch (err) {
       console.log(err);
-      alert("주문 불러오기 실패");
+    } finally {
+      setLoading(false);
     }
   };
 
-  // 주문 생성
-  const createOrder = async () => {
-    try {
-      await API.post("/orders", { store, address });
-      alert("주문 생성 완료");
-      setStore("");
-      setAddress("");
-      fetchOrders();
-    } catch (err) {
-      alert(err.response?.data?.detail || "에러 발생");
-    }
-  };
-
-  // 자동 새로고침
   useEffect(() => {
     fetchOrders();
-
-    const interval = setInterval(fetchOrders, 3000);
-    return () => clearInterval(interval);
   }, []);
+
+  // ➕ 주문 생성
+  const createOrder = async () => {
+    try {
+      await API.post("/orders", {
+        store,
+        address
+      });
+
+      setStore("");
+      setAddress("");
+
+      fetchOrders();
+
+    } catch (err) {
+      alert("주문 생성 실패");
+    }
+  };
+
+  if (loading) return <h2>로딩중...</h2>;
 
   return (
     <div style={{ padding: 20 }}>
       <h1>관리자 페이지</h1>
-
-      <button onClick={logout}>로그아웃</button>
-
-      <h2>주문 생성</h2>
 
       <input
         placeholder="가게명"
@@ -67,27 +74,13 @@ function AdminPage() {
 
       <button onClick={createOrder}>주문 생성</button>
 
-      <h2>주문 목록</h2>
+      <hr />
 
       {orders.map((o) => (
-        <div
-          key={o._id}
-          style={{
-            border: "1px solid #ccc",
-            margin: 10,
-            padding: 10,
-            borderRadius: 8
-          }}
-        >
-          <p><b>가게:</b> {o.store}</p>
-          <p><b>주소:</b> {o.address}</p>
-          <p>
-            <b>상태:</b>{" "}
-            {o.status === "waiting" && "🟡 대기"}
-            {o.status === "accepted" && "🟢 배달중"}
-            {o.status === "completed" && "⚫ 완료"}
-          </p>
-          <p><b>기사:</b> {o.driver_id || "없음"}</p>
+        <div key={o._id}>
+          <p>{o.store} / {o.address}</p>
+          <p>상태: {o.status}</p>
+          <hr />
         </div>
       ))}
     </div>
