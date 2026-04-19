@@ -8,6 +8,8 @@ from jose import jwt
 
 app = FastAPI()
 
+print("🔥 NEW VERSION DEPLOYED 🔥")
+
 @app.get("/")
 def home():
     return {"message": "server running"}
