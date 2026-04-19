@@ -1,10 +1,11 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pymongo import MongoClient
 from pydantic import BaseModel
 from bson import ObjectId
 from jose import jwt
+from fastapi.responses import JSONResponse
 
 app = FastAPI()
 
@@ -19,24 +20,32 @@ def home():
 # =========================
 SECRET_KEY = "mysecretkey"
 ALGORITHM = "HS256"
-
 security = HTTPBearer()
 
 # =========================
-# 🔥 CORS (이게 핵심, 이것만 사용)
+# 🔥 CORS (완전 강제 적용)
 # =========================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://money-sepia-beta.vercel.app",
-        "http://localhost:3000"
-    ],
+    allow_origins=["*"],  # 🔥 테스트용으로 완전 허용
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ❗ OPTIONS 핸들러 삭제 (중요)
+# 🔥 CORS 강제 미들웨어 (이게 핵심)
+@app.middleware("http")
+async def force_cors(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    return response
+
+# 🔥 OPTIONS 완전 처리
+@app.options("/{path:path}")
+async def options_handler(path: str):
+    return JSONResponse(content={"ok": True})
 
 # =========================
 # DB
@@ -69,9 +78,8 @@ users = [
 # 🔐 토큰 검증
 # =========================
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-
     try:
+        token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
     except:
@@ -99,7 +107,7 @@ def login(data: LoginData):
     return {"token": token, "role": user["role"]}
 
 # =========================
-# 주문 생성 (관리자)
+# 주문 생성
 # =========================
 @app.post("/orders")
 def create_order(order: Order, user=Depends(get_current_user)):
@@ -132,7 +140,7 @@ def get_orders(user=Depends(get_current_user)):
     ]
 
 # =========================
-# 수락 (기사)
+# 수락
 # =========================
 @app.post("/orders/{order_id}/accept")
 def accept_order(order_id: str, user=Depends(get_current_user)):
@@ -150,7 +158,7 @@ def accept_order(order_id: str, user=Depends(get_current_user)):
     return {"message": "accepted"}
 
 # =========================
-# 완료 (기사)
+# 완료
 # =========================
 @app.post("/orders/{order_id}/complete")
 def complete_order(order_id: str, user=Depends(get_current_user)):
