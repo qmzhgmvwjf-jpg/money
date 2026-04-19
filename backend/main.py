@@ -5,7 +5,6 @@ from pymongo import MongoClient
 from pydantic import BaseModel
 from bson import ObjectId
 from jose import jwt
-from passlib.context import CryptContext
 
 app = FastAPI()
 
@@ -19,26 +18,33 @@ def home():
 SECRET_KEY = "mysecretkey"
 ALGORITHM = "HS256"
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
 # =========================
-# CORS
+# ✅ CORS (🔥 중요 수정)
 # =========================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://money-sepia-beta.vercel.app"
+        "https://money-sepia-beta.vercel.app",
+        "http://localhost:3000"
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# 👉 OPTIONS 프리플라이트 강제 허용 (핵심)
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    return {}
+
 # =========================
 # DB
 # =========================
-client = MongoClient("mongodb+srv://jaehoon1290:wogns0416@cluster0.iv4hqh8.mongodb.net/?appName=Cluster0")
+client = MongoClient(
+    "mongodb+srv://jaehoon1290:wogns0416@cluster0.iv4hqh8.mongodb.net/?retryWrites=true&w=majority"
+)
 db = client["delivery"]
 
 # =========================
@@ -77,7 +83,10 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 # =========================
 @app.post("/login")
 def login(data: LoginData):
-    user = next((u for u in users if u["username"] == data.username and u["password"] == data.password), None)
+    user = next(
+        (u for u in users if u["username"] == data.username and u["password"] == data.password),
+        None
+    )
 
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -91,7 +100,7 @@ def login(data: LoginData):
     return {"token": token, "role": user["role"]}
 
 # =========================
-# 주문 생성 (관리자만)
+# 주문 생성 (관리자)
 # =========================
 @app.post("/orders")
 def create_order(order: Order, user=Depends(get_current_user)):
@@ -104,11 +113,12 @@ def create_order(order: Order, user=Depends(get_current_user)):
         "status": "waiting",
         "driver_id": None
     }
+
     db.orders.insert_one(data)
     return {"message": "ok"}
 
 # =========================
-# 주문 조회 (로그인 필요)
+# 주문 조회
 # =========================
 @app.get("/orders")
 def get_orders(user=Depends(get_current_user)):
@@ -126,7 +136,7 @@ def get_orders(user=Depends(get_current_user)):
     return orders
 
 # =========================
-# 수락 (기사만)
+# 수락 (기사)
 # =========================
 @app.post("/orders/{order_id}/accept")
 def accept_order(order_id: str, user=Depends(get_current_user)):
@@ -140,10 +150,11 @@ def accept_order(order_id: str, user=Depends(get_current_user)):
             "driver_id": user["username"]
         }}
     )
+
     return {"message": "accepted"}
 
 # =========================
-# 완료 (자기 주문만)
+# 완료 (기사)
 # =========================
 @app.post("/orders/{order_id}/complete")
 def complete_order(order_id: str, user=Depends(get_current_user)):
@@ -159,4 +170,5 @@ def complete_order(order_id: str, user=Depends(get_current_user)):
         {"_id": ObjectId(order_id)},
         {"$set": {"status": "completed"}}
     )
+
     return {"message": "completed"}
