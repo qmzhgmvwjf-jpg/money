@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Response
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pymongo import MongoClient
@@ -21,28 +21,20 @@ ALGORITHM = "HS256"
 security = HTTPBearer()
 
 # =========================
-# 🔥 CORS (완전 안정 버전)
+# 🔥 CORS (이게 핵심, 이것만 사용)
 # =========================
-origins = [
-    "https://money-sepia-beta.vercel.app",
-    "http://localhost:3000",
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=[
+        "https://money-sepia-beta.vercel.app",
+        "http://localhost:3000"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 👉 OPTIONS 프리플라이트 완전 처리
-@app.options("/{full_path:path}")
-async def options_handler(full_path: str, response: Response):
-    response.headers["Access-Control-Allow-Origin"] = "https://money-sepia-beta.vercel.app"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    return {"ok": True}
+# ❗ OPTIONS 핸들러 삭제 (중요)
 
 # =========================
 # DB
@@ -112,14 +104,13 @@ def create_order(order: Order, user=Depends(get_current_user)):
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Not allowed")
 
-    data = {
+    db.orders.insert_one({
         "store": order.store,
         "address": order.address,
         "status": "waiting",
         "driver_id": None
-    }
+    })
 
-    db.orders.insert_one(data)
     return {"message": "ok"}
 
 # =========================
@@ -127,18 +118,16 @@ def create_order(order: Order, user=Depends(get_current_user)):
 # =========================
 @app.get("/orders")
 def get_orders(user=Depends(get_current_user)):
-    orders = []
-
-    for o in db.orders.find():
-        orders.append({
+    return [
+        {
             "_id": str(o["_id"]),
             "store": o.get("store"),
             "address": o.get("address"),
             "status": o.get("status"),
             "driver_id": o.get("driver_id")
-        })
-
-    return orders
+        }
+        for o in db.orders.find()
+    ]
 
 # =========================
 # 수락 (기사)
