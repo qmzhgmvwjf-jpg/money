@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import API from "../api";
 import { useNavigate } from "react-router-dom";
 
@@ -6,6 +6,16 @@ function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const role = localStorage.getItem("role");
+
+    if (token) {
+      if (role === "admin") navigate("/admin");
+      else navigate("/rider");
+    }
+  }, []);
 
   const login = async () => {
     try {
@@ -15,6 +25,7 @@ function LoginPage() {
       });
 
       localStorage.setItem("token", res.data.token);
+      localStorage.setItem("role", res.data.role);
 
       if (res.data.role === "admin") {
         navigate("/admin");

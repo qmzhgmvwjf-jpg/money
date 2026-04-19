@@ -6,6 +6,13 @@ function AdminPage() {
   const [address, setAddress] = useState("");
   const [orders, setOrders] = useState([]);
 
+  // 로그아웃
+  const logout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("role");
+    window.location.href = "/";
+  };
+
   // 주문 가져오기
   const fetchOrders = async () => {
     try {
@@ -24,42 +31,42 @@ function AdminPage() {
       alert("주문 생성 완료");
       setStore("");
       setAddress("");
-      fetchOrders(); // 생성 후 새로고침
-    } catch {
-      alert("권한 없음 또는 오류");
+      fetchOrders();
+    } catch (err) {
+      alert(err.response?.data?.detail || "에러 발생");
     }
   };
 
-  // 처음 로딩 시 주문 불러오기
+  // 자동 새로고침
   useEffect(() => {
     fetchOrders();
+
+    const interval = setInterval(fetchOrders, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
     <div style={{ padding: 20 }}>
       <h1>관리자 페이지</h1>
 
-      {/* 주문 생성 */}
-      <div style={{ marginBottom: 20 }}>
-        <input
-          placeholder="가게명"
-          value={store}
-          onChange={(e) => setStore(e.target.value)}
-        />
+      <button onClick={logout}>로그아웃</button>
 
-        <input
-          placeholder="주소"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-        />
+      <h2>주문 생성</h2>
 
-        <button onClick={createOrder}>주문 생성</button>
-      </div>
+      <input
+        placeholder="가게명"
+        value={store}
+        onChange={(e) => setStore(e.target.value)}
+      />
 
-      {/* 새로고침 버튼 */}
-      <button onClick={fetchOrders}>새로고침</button>
+      <input
+        placeholder="주소"
+        value={address}
+        onChange={(e) => setAddress(e.target.value)}
+      />
 
-      {/* 주문 리스트 */}
+      <button onClick={createOrder}>주문 생성</button>
+
       <h2>주문 목록</h2>
 
       {orders.map((o) => (
