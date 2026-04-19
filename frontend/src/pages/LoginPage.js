@@ -8,6 +8,11 @@ function LoginPage() {
   const navigate = useNavigate();
 
   const login = async () => {
+    if (!username || !password) {
+      alert("입력하세요");
+      return;
+    }
+
     try {
       const res = await API.post("/login", {
         username,
@@ -17,33 +22,23 @@ function LoginPage() {
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("role", res.data.role);
 
-      if (res.data.role === "admin") {
-        navigate("/admin");
-      } else {
-        navigate("/rider");
-      }
+      if (res.data.role === "admin") navigate("/admin");
+      else navigate("/rider");
 
-    } catch (err) {
+    } catch {
       alert("로그인 실패");
     }
   };
 
   return (
-    <div style={{ padding: 20 }}>
-      <h1>로그인</h1>
+    <div className="container">
+      <h2>🚚 배달 서비스</h2>
 
-      <input
-        placeholder="아이디"
-        onChange={(e) => setUsername(e.target.value)}
-      />
-
-      <input
-        type="password"
-        placeholder="비밀번호"
-        onChange={(e) => setPassword(e.target.value)}
-      />
-
-      <button onClick={login}>로그인</button>
+      <div className="card">
+        <input placeholder="아이디" onChange={(e)=>setUsername(e.target.value)} />
+        <input type="password" placeholder="비밀번호" onChange={(e)=>setPassword(e.target.value)} />
+        <button className="btn-primary" onClick={login}>로그인</button>
+      </div>
     </div>
   );
 }

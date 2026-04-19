@@ -4,76 +4,61 @@ import { useNavigate } from "react-router-dom";
 
 function RiderPage() {
   const navigate = useNavigate();
-
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 🔐 접근 보호
   useEffect(() => {
     const token = localStorage.getItem("token");
     const role = localStorage.getItem("role");
 
     if (!token || role !== "driver") {
       navigate("/");
+      return;
     }
-  }, [navigate]);
 
-  // 📦 주문 가져오기
+    fetchOrders();
+  }, []);
+
   const fetchOrders = async () => {
     try {
       const res = await API.get("/orders");
       setOrders(res.data);
-    } catch (err) {
-      console.log(err);
+    } catch {
+      alert("서버 오류");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
+  const accept = async (id) => {
+    await API.post(`/orders/${id}/accept`);
     fetchOrders();
-  }, []);
-
-  // 🚴 수락
-  const acceptOrder = async (id) => {
-    try {
-      await API.post(`/orders/${id}/accept`);
-      fetchOrders();
-    } catch {
-      alert("수락 실패");
-    }
   };
 
-  // ✅ 완료
-  const completeOrder = async (id) => {
-    try {
-      await API.post(`/orders/${id}/complete`);
-      fetchOrders();
-    } catch {
-      alert("완료 실패");
-    }
+  const complete = async (id) => {
+    await API.post(`/orders/${id}/complete`);
+    fetchOrders();
   };
 
   if (loading) return <h2>로딩중...</h2>;
 
   return (
-    <div style={{ padding: 20 }}>
-      <h1>기사 페이지</h1>
+    <div className="container">
+      <h2>🚴 기사</h2>
 
-      {orders.map((o) => (
-        <div key={o._id}>
-          <p>{o.store} / {o.address}</p>
-          <p>상태: {o.status}</p>
+      {orders.map(o => (
+        <div key={o._id} className="card">
+          <b>{o.store}</b>
+          <p>{o.address}</p>
+          <p>{o.status}</p>
 
           {o.status === "waiting" && (
-            <button onClick={() => acceptOrder(o._id)}>수락</button>
+            <button className="btn-success" onClick={()=>accept(o._id)}>수락</button>
           )}
 
           {o.status === "accepted" && (
-            <button onClick={() => completeOrder(o._id)}>완료</button>
+            <button className="btn-danger" onClick={()=>complete(o._id)}>완료</button>
           )}
-
-          <hr />
         </div>
       ))}
     </div>
