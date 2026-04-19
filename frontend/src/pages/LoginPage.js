@@ -15,7 +15,7 @@ function LoginPage() {
       if (role === "admin") navigate("/admin");
       else navigate("/rider");
     }
-  }, [navigate]);
+  }, [navigate]); // ⭐ 이거 반드시 있어야 함
 
   const login = async () => {
     try {
