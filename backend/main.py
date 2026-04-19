@@ -176,3 +176,14 @@ def complete_order(order_id: str, user=Depends(get_current_user)):
     )
 
     return {"message": "completed"}
+
+# =========================
+# 배달시작
+# =========================
+@app.post("/orders/{order_id}/start")
+def start_delivery(order_id: str, user=Depends(get_current_user)):
+    db.orders.update_one(
+        {"_id": ObjectId(order_id)},
+        {"$set": {"status": "delivering"}}
+    )
+    return {"message": "started"}
