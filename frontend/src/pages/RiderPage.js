@@ -17,7 +17,7 @@ function RiderPage() {
     }
 
     fetchOrders();
-  }, []);
+  }, [navigate]);
 
   const fetchOrders = async () => {
     try {

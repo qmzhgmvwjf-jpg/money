@@ -20,7 +20,7 @@ function AdminPage() {
     }
 
     fetchOrders();
-  }, []);
+  }, [navigate]);
 
   const fetchOrders = async () => {
     try {
