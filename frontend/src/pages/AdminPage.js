@@ -10,13 +10,13 @@ function AdminPage() {
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // 로그아웃
-  const logout = () => {
+  // 🔐 로그아웃 (useCallback 필수)
+  const logout = useCallback(() => {
     localStorage.clear();
     navigate("/");
-  };
+  }, [navigate]);
 
-  // 주문 가져오기
+  // 📦 주문 가져오기
   const fetchOrders = useCallback(async () => {
     try {
       const res = await API.get("/orders");
@@ -33,9 +33,9 @@ function AdminPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [logout]);
 
-  // 최초 진입 + 실시간
+  // 🔄 최초 + 실시간
   useEffect(() => {
     const token = localStorage.getItem("token");
     const role = localStorage.getItem("role");
@@ -51,7 +51,7 @@ function AdminPage() {
     return () => clearInterval(interval);
   }, [navigate, fetchOrders]);
 
-  // 주문 생성
+  // ➕ 주문 생성
   const createOrder = async () => {
     if (!store || !address) {
       alert("값 입력해라");
@@ -89,6 +89,7 @@ function AdminPage() {
           value={address}
           onChange={(e) => setAddress(e.target.value)}
         />
+
         <button className="primary btn" onClick={createOrder}>
           주문 생성
         </button>

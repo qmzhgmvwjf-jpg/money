@@ -10,12 +10,13 @@ function RiderPage() {
 
   const username = localStorage.getItem("username");
 
-  const logout = () => {
+  // 🔐 로그아웃
+  const logout = useCallback(() => {
     localStorage.clear();
     navigate("/");
-  };
+  }, [navigate]);
 
-  // 주문 가져오기
+  // 📦 주문 가져오기
   const fetchOrders = useCallback(async () => {
     try {
       const res = await API.get("/orders");
@@ -32,8 +33,9 @@ function RiderPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [logout]);
 
+  // 🔄 최초 + 실시간
   useEffect(() => {
     const token = localStorage.getItem("token");
     const role = localStorage.getItem("role");
