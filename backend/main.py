@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pymongo import MongoClient
@@ -21,23 +21,28 @@ ALGORITHM = "HS256"
 security = HTTPBearer()
 
 # =========================
-# ✅ CORS (🔥 중요 수정)
+# 🔥 CORS (완전 안정 버전)
 # =========================
+origins = [
+    "https://money-sepia-beta.vercel.app",
+    "http://localhost:3000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://money-sepia-beta.vercel.app",
-        "http://localhost:3000"
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 👉 OPTIONS 프리플라이트 강제 허용 (핵심)
+# 👉 OPTIONS 프리플라이트 완전 처리
 @app.options("/{full_path:path}")
-async def options_handler(full_path: str):
-    return {}
+async def options_handler(full_path: str, response: Response):
+    response.headers["Access-Control-Allow-Origin"] = "https://money-sepia-beta.vercel.app"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return {"ok": True}
 
 # =========================
 # DB
