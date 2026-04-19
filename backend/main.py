@@ -38,7 +38,7 @@ app.add_middleware(
 # =========================
 # DB
 # =========================
-client = MongoClient("mongodb+srv://jaehoon1290:<wogns0416>@cluster0.iv4hqh8.mongodb.net/?appName=Cluster0")
+client = MongoClient("mongodb+srv://jaehoon1290:wogns0416@cluster0.iv4hqh8.mongodb.net/?appName=Cluster0")
 db = client["delivery"]
 
 # =========================
