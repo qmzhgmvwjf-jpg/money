@@ -17,6 +17,11 @@ function RiderPage() {
     }
 
     fetchOrders();
+    
+    // 🔥 실시간 갱신
+    const interval = setInterval(fetchOrders, 3000);
+
+    return () => clearInterval(interval);
   }, [navigate]);
 
   const fetchOrders = async () => {
@@ -47,7 +52,13 @@ function RiderPage() {
       <h2>🚴 기사</h2>
 
       {orders.map(o => (
-        <div key={o._id} className="card">
+        <div 
+          key={o._id} 
+          className="card"
+          style={{
+            border: o.status === "waiting" ? "2px solid red" : "none"
+          }}
+        >
           <b>{o.store}</b>
           <p>{o.address}</p>
           <p>{o.status}</p>

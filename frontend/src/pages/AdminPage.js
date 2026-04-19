@@ -20,6 +20,11 @@ function AdminPage() {
     }
 
     fetchOrders();
+
+    // 🔥 3초마다 자동 갱신
+    const interval = setInterval(fetchOrders, 3000);
+
+    return () => clearInterval(interval);
   }, [navigate]);
 
   const fetchOrders = async () => {
@@ -55,7 +60,13 @@ function AdminPage() {
       </div>
 
       {orders.map(o => (
-        <div key={o._id} className="card">
+        <div 
+          key={o._id} 
+          className="card"
+          style={{
+            border: o.status === "waiting" ? "2px solid red" : "none"
+          }}
+        >
           <b>{o.store}</b>
           <p>{o.address}</p>
           <p>상태: {o.status}</p>
