@@ -11,48 +11,41 @@ function RiderPage() {
 
   const username = localStorage.getItem("username");
 
-  // 🔐 로그아웃
   const logout = useCallback(() => {
     localStorage.clear();
     navigate("/");
   }, [navigate]);
 
-  // 📦 주문 가져오기 + 정렬 + 콜알림
+  // 📦 주문 가져오기
   const fetchOrders = useCallback(async () => {
     try {
       const res = await API.get("/orders");
 
-      // 🔥 최신순 정렬
       const sorted = res.data.sort(
-        (a, b) => new Date(b._id) - new Date(a._id)
+        (a, b) => new Date(b.created_at) - new Date(a.created_at)
       );
 
-      const waitingOrders = sorted.filter(o => o.status === "waiting");
+      // 🔥 기사에게 보여줄 것만
+      const dispatchOrders = sorted.filter(o => o.status === "dispatch_ready");
 
-      // 🔔 새 주문 감지
-      if (waitingOrders.length > prevCount) {
+      // 🔔 콜 알림
+      if (dispatchOrders.length > prevCount) {
         const audio = new Audio("/alert.mp3");
         audio.play();
       }
 
-      setPrevCount(waitingOrders.length);
+      setPrevCount(dispatchOrders.length);
       setOrders(sorted);
 
     } catch (err) {
-      console.log(err);
-
       if (err.response?.status === 401) {
-        alert("로그인 만료");
         logout();
-      } else {
-        alert("서버 오류");
       }
     } finally {
       setLoading(false);
     }
   }, [logout, prevCount]);
 
-  // 🔄 최초 + 실시간
   useEffect(() => {
     const token = localStorage.getItem("token");
     const role = localStorage.getItem("role");
@@ -84,16 +77,16 @@ function RiderPage() {
     fetchOrders();
   };
 
-  // 🔥 상태별 분리
-  const waiting = orders.filter(o => o.status === "waiting");
+  // 🔥 상태 분리
+  const waiting = orders.filter(o => o.status === "dispatch_ready");
 
-  const active = orders
-    .filter(o => o.driver_id === username && o.status !== "completed")
-    .sort((a, b) => new Date(b._id) - new Date(a._id));
+  const active = orders.filter(
+    o => o.driver_id === username && o.status !== "completed"
+  );
 
-  const completed = orders
-    .filter(o => o.driver_id === username && o.status === "completed")
-    .sort((a, b) => new Date(b._id) - new Date(a._id));
+  const completed = orders.filter(
+    o => o.driver_id === username && o.status === "completed"
+  );
 
   if (loading) return <h2 style={{ textAlign: "center" }}>로딩중...</h2>;
 
@@ -104,8 +97,8 @@ function RiderPage() {
         <button onClick={logout}>로그아웃</button>
       </div>
 
-      {/* 📦 대기 주문 */}
-      <h3>📦 대기 주문</h3>
+      {/* 🔴 배차 요청 */}
+      <h3>📦 배차 요청</h3>
       {waiting.map(o => (
         <div
           key={o._id}
@@ -118,7 +111,7 @@ function RiderPage() {
           <b>{o.store}</b>
           <p>{o.address}</p>
 
-          <button className="success btn" onClick={() => accept(o._id)}>
+          <button onClick={() => accept(o._id)}>
             수락
           </button>
         </div>
@@ -132,26 +125,21 @@ function RiderPage() {
           <p>{o.address}</p>
 
           {o.status === "accepted" && (
-            <button className="orange btn" onClick={() => start(o._id)}>
-              배달 시작
-            </button>
+            <button onClick={() => start(o._id)}>출발</button>
           )}
 
           {o.status === "delivering" && (
-            <button className="danger btn" onClick={() => complete(o._id)}>
-              완료
-            </button>
+            <button onClick={() => complete(o._id)}>완료</button>
           )}
         </div>
       ))}
 
       {/* ✅ 완료 */}
-      <h3>✅ 완료된 주문</h3>
+      <h3>✅ 완료</h3>
       {completed.map(o => (
         <div key={o._id} className="card">
           <b>{o.store}</b>
           <p>{o.address}</p>
-          <div className="status completed">완료됨</div>
         </div>
       ))}
     </div>

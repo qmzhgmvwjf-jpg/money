@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from bson import ObjectId
 from jose import jwt
 from fastapi.responses import JSONResponse
+from datetime import datetime
 
 app = FastAPI()
 
@@ -23,26 +24,22 @@ ALGORITHM = "HS256"
 security = HTTPBearer()
 
 # =========================
-# 🔥 CORS (완전 강제 적용)
+# 🔥 CORS
 # =========================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 🔥 테스트용으로 완전 허용
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 🔥 CORS 강제 미들웨어 (이게 핵심)
 @app.middleware("http")
 async def force_cors(request: Request, call_next):
     response = await call_next(request)
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "*"
     return response
 
-# 🔥 OPTIONS 완전 처리
 @app.options("/{path:path}")
 async def options_handler(path: str):
     return JSONResponse(content={"ok": True})
@@ -64,14 +61,22 @@ class LoginData(BaseModel):
 
 class Order(BaseModel):
     store: str
-    address: str
+    address: str | None = None
+    items: list | None = None
+
+class Menu(BaseModel):
+    store: str
+    name: str
+    price: int
 
 # =========================
 # 유저 (임시)
 # =========================
 users = [
     {"username": "admin", "password": "1234", "role": "admin"},
-    {"username": "driver1", "password": "1234", "role": "driver"}
+    {"username": "driver1", "password": "1234", "role": "driver"},
+    {"username": "customer1", "password": "1234", "role": "customer"},
+    {"username": "store1", "password": "1234", "role": "store"}
 ]
 
 # =========================
@@ -107,24 +112,54 @@ def login(data: LoginData):
     return {"token": token, "role": user["role"]}
 
 # =========================
-# 주문 생성
+# 🍽️ 메뉴
+# =========================
+@app.post("/menus")
+def create_menu(menu: Menu, user=Depends(get_current_user)):
+    if user["role"] not in ["admin", "store"]:
+        raise HTTPException(status_code=403)
+
+    db.menus.insert_one({
+        "store": menu.store,
+        "name": menu.name,
+        "price": menu.price
+    })
+
+    return {"message": "ok"}
+
+@app.get("/menus")
+def get_menus():
+    return [
+        {
+            "_id": str(m["_id"]),
+            "store": m.get("store"),
+            "name": m.get("name"),
+            "price": m.get("price")
+        }
+        for m in db.menus.find()
+    ]
+
+# =========================
+# 📦 주문 생성 (고객)
 # =========================
 @app.post("/orders")
 def create_order(order: Order, user=Depends(get_current_user)):
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Not allowed")
+    if user["role"] not in ["customer", "admin"]:
+        raise HTTPException(status_code=403)
 
     db.orders.insert_one({
         "store": order.store,
         "address": order.address,
-        "status": "waiting",
-        "driver_id": None
+        "items": order.items,
+        "status": "pending",   # 🔥 가게 대기
+        "driver_id": None,
+        "created_at": datetime.utcnow()
     })
 
     return {"message": "ok"}
 
 # =========================
-# 주문 조회
+# 📦 주문 조회
 # =========================
 @app.get("/orders")
 def get_orders(user=Depends(get_current_user)):
@@ -133,19 +168,51 @@ def get_orders(user=Depends(get_current_user)):
             "_id": str(o["_id"]),
             "store": o.get("store"),
             "address": o.get("address"),
+            "items": o.get("items"),
             "status": o.get("status"),
-            "driver_id": o.get("driver_id")
+            "driver_id": o.get("driver_id"),
+            "created_at": o.get("created_at")
         }
         for o in db.orders.find()
     ]
 
 # =========================
-# 수락
+# 🏪 가게 수락
+# =========================
+@app.post("/orders/{order_id}/store_accept")
+def store_accept(order_id: str, user=Depends(get_current_user)):
+    if user["role"] != "store":
+        raise HTTPException(status_code=403)
+
+    db.orders.update_one(
+        {"_id": ObjectId(order_id)},
+        {"$set": {"status": "accepted"}}
+    )
+
+    return {"message": "store accepted"}
+
+# =========================
+# 🚚 배차 요청
+# =========================
+@app.post("/orders/{order_id}/dispatch")
+def dispatch(order_id: str, user=Depends(get_current_user)):
+    if user["role"] != "store":
+        raise HTTPException(status_code=403)
+
+    db.orders.update_one(
+        {"_id": ObjectId(order_id)},
+        {"$set": {"status": "dispatch_ready"}}
+    )
+
+    return {"message": "dispatch requested"}
+
+# =========================
+# 🚴 기사 수락
 # =========================
 @app.post("/orders/{order_id}/accept")
 def accept_order(order_id: str, user=Depends(get_current_user)):
     if user["role"] != "driver":
-        raise HTTPException(status_code=403, detail="Not allowed")
+        raise HTTPException(status_code=403)
 
     db.orders.update_one(
         {"_id": ObjectId(order_id)},
@@ -158,27 +225,7 @@ def accept_order(order_id: str, user=Depends(get_current_user)):
     return {"message": "accepted"}
 
 # =========================
-# 완료
-# =========================
-@app.post("/orders/{order_id}/complete")
-def complete_order(order_id: str, user=Depends(get_current_user)):
-    order = db.orders.find_one({"_id": ObjectId(order_id)})
-
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-
-    if order.get("driver_id") != user["username"]:
-        raise HTTPException(status_code=403, detail="Not your order")
-
-    db.orders.update_one(
-        {"_id": ObjectId(order_id)},
-        {"$set": {"status": "completed"}}
-    )
-
-    return {"message": "completed"}
-
-# =========================
-# 배달시작
+# 🚚 배달 시작
 # =========================
 @app.post("/orders/{order_id}/start")
 def start_delivery(order_id: str, user=Depends(get_current_user)):
@@ -187,3 +234,14 @@ def start_delivery(order_id: str, user=Depends(get_current_user)):
         {"$set": {"status": "delivering"}}
     )
     return {"message": "started"}
+
+# =========================
+# ✅ 완료
+# =========================
+@app.post("/orders/{order_id}/complete")
+def complete_order(order_id: str, user=Depends(get_current_user)):
+    db.orders.update_one(
+        {"_id": ObjectId(order_id)},
+        {"$set": {"status": "completed"}}
+    )
+    return {"message": "completed"}

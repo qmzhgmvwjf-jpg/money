@@ -1,18 +1,23 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import React from "react";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+
 import LoginPage from "./pages/LoginPage";
 import AdminPage from "./pages/AdminPage";
 import RiderPage from "./pages/RiderPage";
-import "./styles.css";
+import CustomerPage from "./pages/CustomerPage";
+import StorePage from "./pages/StorePage";
 
 function App() {
   return (
-    <BrowserRouter>
+    <Router>
       <Routes>
         <Route path="/" element={<LoginPage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/rider" element={<RiderPage />} />
+        <Route path="/customer" element={<CustomerPage />} />
+        <Route path="/store" element={<StorePage />} />
       </Routes>
-    </BrowserRouter>
+    </Router>
   );
 }
 

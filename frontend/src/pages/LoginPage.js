@@ -23,10 +23,21 @@ function LoginPage() {
       localStorage.setItem("role", res.data.role);
       localStorage.setItem("username", username);
 
-      if (res.data.role === "admin") navigate("/admin");
-      else navigate("/rider");
+      // 🔥 핵심 분기
+      if (res.data.role === "admin") {
+        navigate("/admin");
+      } else if (res.data.role === "driver") {
+        navigate("/rider");
+      } else if (res.data.role === "customer") {
+        navigate("/customer");
+      } else if (res.data.role === "store") {
+        navigate("/store");
+      } else {
+        navigate("/");
+      }
 
-    } catch {
+    } catch (err) {
+      console.log(err);
       alert("로그인 실패");
     }
   };
@@ -34,7 +45,7 @@ function LoginPage() {
   return (
     <div className="login-container">
       <div className="login-card">
-        <h2 className="login-title">🚚 Delivery App</h2>
+        <h2>🚚 Delivery App</h2>
 
         <input
           placeholder="아이디"
