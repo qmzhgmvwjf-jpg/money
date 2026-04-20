@@ -27,23 +27,29 @@ function CustomerPage() {
       return;
     }
 
-    await API.post("/orders", {
-      store: cart[0].store,
-      items: cart
-    });
+    try {
+      await API.post("/orders", {
+        store: cart[0].store, // 🔥 메뉴의 store 사용
+        items: cart
+      });
 
-    alert("주문 완료!");
-    setCart([]);
+      alert("주문 완료!");
+      setCart([]);
+    } catch (err) {
+      console.log(err);
+      alert("주문 실패");
+    }
   };
 
   return (
     <div className="container">
       <h2>🍽️ 주문하기</h2>
 
-      {/* 메뉴 리스트 */}
+      {/* 메뉴 */}
       {menus.map((m) => (
         <div key={m._id} className="card">
-          <b>{m.name}</b>
+          <b>{m.store}</b>
+          <p>{m.name}</p>
           <p>{m.price}원</p>
 
           <button onClick={() => addToCart(m)}>
@@ -56,7 +62,7 @@ function CustomerPage() {
       <h3>🛒 장바구니</h3>
       {cart.map((c, i) => (
         <div key={i}>
-          {c.name} - {c.price}
+          {c.name} - {c.price}원
         </div>
       ))}
 

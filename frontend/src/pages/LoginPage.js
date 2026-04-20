@@ -23,7 +23,7 @@ function LoginPage() {
       localStorage.setItem("role", res.data.role);
       localStorage.setItem("username", username);
 
-      // 🔥 핵심 분기
+      // 🔥 역할 분기
       if (res.data.role === "admin") {
         navigate("/admin");
       } else if (res.data.role === "driver") {
@@ -31,9 +31,9 @@ function LoginPage() {
       } else if (res.data.role === "customer") {
         navigate("/customer");
       } else if (res.data.role === "store") {
+        // 🔥 가게 이름 저장 (지금은 고정)
+        localStorage.setItem("storeName", "김밥천국");
         navigate("/store");
-      } else {
-        navigate("/");
       }
 
     } catch (err) {
