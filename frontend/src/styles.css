@@ -115,3 +115,9 @@ button {
 .login-btn:hover {
   background: #1366d6;
 }
+
+@keyframes blink {
+  0% { border-color: red; }
+  50% { border-color: transparent; }
+  100% { border-color: red; }
+}

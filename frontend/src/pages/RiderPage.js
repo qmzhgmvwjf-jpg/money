@@ -7,6 +7,7 @@ function RiderPage() {
 
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [prevCount, setPrevCount] = useState(0);
 
   const username = localStorage.getItem("username");
 
@@ -16,11 +17,27 @@ function RiderPage() {
     navigate("/");
   }, [navigate]);
 
-  // 📦 주문 가져오기
+  // 📦 주문 가져오기 + 콜 알림
   const fetchOrders = useCallback(async () => {
     try {
       const res = await API.get("/orders");
-      setOrders(res.data);
+
+      // 🔥 최신순 정렬 (최근 주문이 위로)
+      const sorted = res.data.sort(
+        (a, b) => new Date(b._id) - new Date(a._id)
+      );
+
+      const waitingOrders = sorted.filter(o => o.status === "waiting");
+
+      // 🔔 새 주문 감지
+      if (waitingOrders.length > prevCount) {
+        const audio = new Audio("/alert.mp3");
+        audio.play();
+      }
+
+      setPrevCount(waitingOrders.length);
+      setOrders(sorted);
+
     } catch (err) {
       console.log(err);
 
@@ -33,7 +50,7 @@ function RiderPage() {
     } finally {
       setLoading(false);
     }
-  }, [logout]);
+  }, [logout, prevCount]);
 
   // 🔄 최초 + 실시간
   useEffect(() => {
@@ -69,8 +86,8 @@ function RiderPage() {
     fetchOrders();
   };
 
-  const waiting = orders.filter((o) => o.status === "waiting");
-  const myOrders = orders.filter((o) => o.driver_id === username);
+  const waiting = orders.filter(o => o.status === "waiting");
+  const myOrders = orders.filter(o => o.driver_id === username);
 
   if (loading) return <h2 style={{ textAlign: "center" }}>로딩중...</h2>;
 
@@ -81,9 +98,17 @@ function RiderPage() {
         <button onClick={logout}>로그아웃</button>
       </div>
 
+      {/* 🔴 대기 주문 */}
       <h3>📦 대기 주문</h3>
       {waiting.map((o) => (
-        <div key={o._id} className="card">
+        <div
+          key={o._id}
+          className="card"
+          style={{
+            border: "2px solid red",
+            animation: "blink 1s infinite"
+          }}
+        >
           <b>{o.store}</b>
           <p>{o.address}</p>
           <div className="status waiting">waiting</div>
@@ -94,6 +119,7 @@ function RiderPage() {
         </div>
       ))}
 
+      {/* 🟢 내 주문 */}
       <h3>🚴 내 주문</h3>
       {myOrders.map((o) => (
         <div key={o._id} className="card">
