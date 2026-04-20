@@ -7,34 +7,52 @@ function RiderPage() {
 
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [prevCount, setPrevCount] = useState(0);
 
   const username = localStorage.getItem("username");
 
+  // 🔐 로그아웃
   const logout = useCallback(() => {
     localStorage.clear();
     navigate("/");
   }, [navigate]);
 
-  // 🔥 주문 가져오기 + 최신순 정렬
+  // 📦 주문 가져오기 + 정렬 + 콜알림
   const fetchOrders = useCallback(async () => {
     try {
       const res = await API.get("/orders");
 
+      // 🔥 최신순 정렬
       const sorted = res.data.sort(
         (a, b) => new Date(b._id) - new Date(a._id)
       );
 
+      const waitingOrders = sorted.filter(o => o.status === "waiting");
+
+      // 🔔 새 주문 감지
+      if (waitingOrders.length > prevCount) {
+        const audio = new Audio("/alert.mp3");
+        audio.play();
+      }
+
+      setPrevCount(waitingOrders.length);
       setOrders(sorted);
 
     } catch (err) {
+      console.log(err);
+
       if (err.response?.status === 401) {
+        alert("로그인 만료");
         logout();
+      } else {
+        alert("서버 오류");
       }
     } finally {
       setLoading(false);
     }
-  }, [logout]);
+  }, [logout, prevCount]);
 
+  // 🔄 최초 + 실시간
   useEffect(() => {
     const token = localStorage.getItem("token");
     const role = localStorage.getItem("role");
@@ -50,7 +68,7 @@ function RiderPage() {
     return () => clearInterval(interval);
   }, [navigate, fetchOrders]);
 
-  // 액션
+  // 🚀 액션
   const accept = async (id) => {
     await API.post(`/orders/${id}/accept`);
     fetchOrders();
@@ -66,12 +84,12 @@ function RiderPage() {
     fetchOrders();
   };
 
-  // 🔥 상태별 분리 + 정렬
+  // 🔥 상태별 분리
   const waiting = orders.filter(o => o.status === "waiting");
 
   const active = orders
     .filter(o => o.driver_id === username && o.status !== "completed")
-    .sort((a, b) => new Date(b._id) - new Date(a._id)); // 👉 항상 위로
+    .sort((a, b) => new Date(b._id) - new Date(a._id));
 
   const completed = orders
     .filter(o => o.driver_id === username && o.status === "completed")
@@ -89,7 +107,14 @@ function RiderPage() {
       {/* 📦 대기 주문 */}
       <h3>📦 대기 주문</h3>
       {waiting.map(o => (
-        <div key={o._id} className="card">
+        <div
+          key={o._id}
+          className="card"
+          style={{
+            border: "2px solid red",
+            animation: "blink 1s infinite"
+          }}
+        >
           <b>{o.store}</b>
           <p>{o.address}</p>
 
@@ -107,11 +132,15 @@ function RiderPage() {
           <p>{o.address}</p>
 
           {o.status === "accepted" && (
-            <button onClick={() => start(o._id)}>배달 시작</button>
+            <button className="orange btn" onClick={() => start(o._id)}>
+              배달 시작
+            </button>
           )}
 
           {o.status === "delivering" && (
-            <button onClick={() => complete(o._id)}>완료</button>
+            <button className="danger btn" onClick={() => complete(o._id)}>
+              완료
+            </button>
           )}
         </div>
       ))}
