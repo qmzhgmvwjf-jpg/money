@@ -225,12 +225,12 @@ def accept_order(order_id: str, user=Depends(get_current_user)):
     db.orders.update_one(
         {"_id": ObjectId(order_id)},
         {"$set": {
-            "status": "accepted",
+            "status": "assigned",
             "driver_id": user["username"]
         }}
     )
 
-    return {"message": "accepted"}
+    return {"message": "assigned"}
 
 # =========================
 # 🚚 배달 시작
