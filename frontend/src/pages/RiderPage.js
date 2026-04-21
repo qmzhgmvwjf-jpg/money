@@ -81,7 +81,9 @@ function RiderPage() {
   const waiting = orders.filter(o => o.status === "dispatch_ready");
 
   const active = orders.filter(
-    o => o.driver_id === username && o.status !== "completed"
+    o =>
+      o.driver_id === username &&
+      (o.status === "assigned" || o.status === "delivering")
   );
 
   const completed = orders.filter(
@@ -124,7 +126,7 @@ function RiderPage() {
           <b>{o.store}</b>
           <p>{o.address}</p>
 
-          {o.status === "accepted" && (
+          {o.status === "assigned" && (
             <button onClick={() => start(o._id)}>출발</button>
           )}
 
