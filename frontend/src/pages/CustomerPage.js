@@ -3,12 +3,18 @@ import API from "../api";
 
 function CustomerPage() {
   const [menus, setMenus] = useState([]);
+  const [stores, setStores] = useState([]);
+  const [selectedStore, setSelectedStore] = useState(null);
   const [cart, setCart] = useState([]);
 
   // 메뉴 불러오기
   const fetchMenus = async () => {
     const res = await API.get("/menus");
     setMenus(res.data);
+
+    // 🔥 가게 목록 추출 (중복 제거)
+    const uniqueStores = [...new Set(res.data.map(m => m.store))];
+    setStores(uniqueStores);
   };
 
   useEffect(() => {
@@ -29,12 +35,14 @@ function CustomerPage() {
 
     try {
       await API.post("/orders", {
-        store: cart[0].store, // 🔥 메뉴의 store 사용
+        store: selectedStore, // 🔥 선택한 가게
         items: cart
       });
 
       alert("주문 완료!");
       setCart([]);
+      setSelectedStore(null);
+
     } catch (err) {
       console.log(err);
       alert("주문 실패");
@@ -45,30 +53,68 @@ function CustomerPage() {
     <div className="container">
       <h2>🍽️ 주문하기</h2>
 
-      {/* 메뉴 */}
-      {menus.map((m) => (
-        <div key={m._id} className="card">
-          <b>{m.store}</b>
-          <p>{m.name}</p>
-          <p>{m.price}원</p>
+      {/* =========================
+          🏪 가게 목록
+      ========================= */}
+      {!selectedStore && (
+        <>
+          <h3>🏪 가게 선택</h3>
 
-          <button onClick={() => addToCart(m)}>
-            담기
+          {stores.map((store, i) => (
+            <div
+              key={i}
+              className="card"
+              style={{ cursor: "pointer" }}
+              onClick={() => setSelectedStore(store)}
+            >
+              <b>{store}</b>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* =========================
+          🍽️ 메뉴 목록
+      ========================= */}
+      {selectedStore && (
+        <>
+          <button onClick={() => setSelectedStore(null)}>
+            ← 가게 목록으로
           </button>
-        </div>
-      ))}
 
-      {/* 장바구니 */}
+          <h3>🍽️ {selectedStore}</h3>
+
+          {menus
+            .filter(m => m.store === selectedStore)
+            .map((m) => (
+              <div key={m._id} className="card">
+                <b>{m.name}</b>
+                <p>{m.price}원</p>
+
+                <button onClick={() => addToCart(m)}>
+                  담기
+                </button>
+              </div>
+            ))}
+        </>
+      )}
+
+      {/* =========================
+          🛒 장바구니
+      ========================= */}
       <h3>🛒 장바구니</h3>
+
       {cart.map((c, i) => (
         <div key={i}>
           {c.name} - {c.price}원
         </div>
       ))}
 
-      <button className="primary btn" onClick={order}>
-        주문하기
-      </button>
+      {selectedStore && (
+        <button className="primary btn" onClick={order}>
+          주문하기
+        </button>
+      )}
     </div>
   );
 }
