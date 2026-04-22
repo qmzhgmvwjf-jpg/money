@@ -124,18 +124,19 @@ function CustomerPage() {
       </div>
 
       {/* 🔥 검색 바 */}
-      <div className="card">
-        <input
-          placeholder="🏪 음식점을 검색하세요"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage("search"); // 🔥 입력하면 바로 검색모드
-          }}
-          style={{ width: "100%", padding: 10 }}
-        />
-      </div>
-
+      {(page === "home" || page === "search") && (
+  <div className="card">
+    <input
+      placeholder="🏪 음식점을 검색하세요"
+      value={search}
+      onChange={(e) => {
+        setSearch(e.target.value);
+        setPage("search");
+      }}
+      style={{ width: "100%", padding: 10 }}
+    />
+  </div>
+)}
       {/* =========================
           🏠 홈
       ========================= */}
