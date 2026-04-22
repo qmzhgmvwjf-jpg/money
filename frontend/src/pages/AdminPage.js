@@ -12,6 +12,7 @@ function AdminPage() {
 
   const [menus, setMenus] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [pendingUsers, setPendingUsers] = useState([]);
 
   const [stats, setStats] = useState(null);
 
@@ -60,6 +61,15 @@ function AdminPage() {
     }
   };
 
+  const fetchPendingUsers = async () => {
+    try {
+      const res = await API.get("/pending-users");
+      setPendingUsers(res.data);
+    } catch {
+      console.log("승인 대기 사용자 없음");
+    }
+  };
+
   useEffect(() => {
     const role = localStorage.getItem("role");
 
@@ -72,6 +82,7 @@ function AdminPage() {
     fetchMenus();
     fetchOrders();
     fetchStats();
+    fetchPendingUsers();
   }, [navigate]);
 
   // =========================
@@ -155,6 +166,11 @@ function AdminPage() {
     fetchStats();
   };
 
+  const approveUser = async (id) => {
+    await API.post(`/approve-user/${id}`);
+    fetchPendingUsers();
+  };
+
   // =========================
   // UI
   // =========================
@@ -170,6 +186,7 @@ function AdminPage() {
         <button onClick={() => setTab("store")}>가게</button>
         <button onClick={() => setTab("menu")}>메뉴</button>
         <button onClick={() => setTab("order")}>주문</button>
+        <button onClick={() => setTab("approve")}>가입승인</button>
         <button onClick={() => setTab("stats")}>통계</button>
       </div>
 
@@ -261,6 +278,29 @@ function AdminPage() {
               </select>
 
               <button onClick={()=>deleteOrder(o._id)}>삭제</button>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* =========================
+          ✅ 가입 승인
+      ========================= */}
+      {tab === "approve" && (
+        <>
+          <h3>⏳ 승인 대기 사용자</h3>
+
+          {pendingUsers.length === 0 && (
+            <div className="card">승인 대기 중인 사용자가 없습니다.</div>
+          )}
+
+          {pendingUsers.map((user) => (
+            <div key={user._id} className="card">
+              <p><b>{user.username}</b></p>
+              <p>역할: {user.role}</p>
+              <p>전화번호: {user.phone}</p>
+              {user.storeName && <p>가게명: {user.storeName}</p>}
+              <button onClick={() => approveUser(user._id)}>승인</button>
             </div>
           ))}
         </>

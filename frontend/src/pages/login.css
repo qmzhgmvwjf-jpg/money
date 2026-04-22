@@ -97,6 +97,16 @@
   box-shadow: 0 0 20px #00d2ff;
 }
 
+.secondary-btn {
+  margin-top: 12px;
+  background: rgba(255,255,255,0.16);
+  color: #eaf6ff;
+}
+
+.secondary-btn:hover {
+  box-shadow: 0 0 20px rgba(255,255,255,0.12);
+}
+
 /* 하단 */
 .footer {
   margin-top: 20px;

@@ -26,19 +26,23 @@ function LoginPage() {
 
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("role", res.data.role);
-      localStorage.setItem("username", username);
+      localStorage.setItem("username", res.data.username || username);
+
+      if (res.data.phone) {
+        localStorage.setItem("phone", res.data.phone);
+      }
 
       if (res.data.role === "admin") navigate("/admin");
       else if (res.data.role === "driver") navigate("/rider");
       else if (res.data.role === "customer") navigate("/customer");
       else if (res.data.role === "store") {
-        localStorage.setItem("storeName", "김밥천국");
+        localStorage.setItem("storeName", res.data.storeName || "");
         navigate("/store");
       }
 
     } catch (err) {
       console.log(err);
-      alert("로그인 실패");
+      alert(err.response?.data?.detail || "로그인 실패");
     } finally {
       setLoading(false);
     }
@@ -86,6 +90,14 @@ function LoginPage() {
           disabled={loading}
         >
           {loading ? "접속 중..." : "로그인"}
+        </button>
+
+        <button
+          className="login-btn secondary-btn"
+          onClick={() => navigate("/register")}
+          type="button"
+        >
+          회원가입
         </button>
 
         <p className="footer">
