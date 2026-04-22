@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 function AdminPage() {
   const navigate = useNavigate();
 
-  const [tab, setTab] = useState("store"); // store | menu | order
+  const [tab, setTab] = useState("store");
 
   const [stores, setStores] = useState([]);
   const [selectedStore, setSelectedStore] = useState(null);
@@ -17,43 +17,34 @@ function AdminPage() {
   const [menuName, setMenuName] = useState("");
   const [price, setPrice] = useState("");
 
-  // 🔐 로그아웃
+  const [editMenuId, setEditMenuId] = useState(null);
+
   const logout = useCallback(() => {
     localStorage.clear();
     navigate("/");
   }, [navigate]);
 
   // =========================
-  // 가게 불러오기
+  // 불러오기
   // =========================
   const fetchStores = async () => {
     const res = await API.get("/menus");
-
-    // 메뉴에서 store만 추출 (중복 제거)
     const uniqueStores = [...new Set(res.data.map(m => m.store))];
     setStores(uniqueStores);
   };
 
-  // =========================
-  // 메뉴 불러오기
-  // =========================
   const fetchMenus = async () => {
     const res = await API.get("/menus");
     setMenus(res.data);
   };
 
-  // =========================
-  // 주문 불러오기
-  // =========================
   const fetchOrders = async () => {
     const res = await API.get("/orders");
     setOrders(res.data);
   };
 
   useEffect(() => {
-    const role = localStorage.getItem("role");
-
-    if (role !== "admin") {
+    if (localStorage.getItem("role") !== "admin") {
       navigate("/");
       return;
     }
@@ -64,24 +55,27 @@ function AdminPage() {
   }, [navigate]);
 
   // =========================
-  // 가게 등록
+  // 가게
   // =========================
   const createStore = () => {
     if (!storeName) return;
-
     setStores([...stores, storeName]);
     setStoreName("");
   };
 
+  const deleteStore = (name) => {
+    if (!window.confirm("가게 삭제?")) return;
+
+    const newMenus = menus.filter(m => m.store !== name);
+    setMenus(newMenus);
+
+    fetchStores();
+  };
+
   // =========================
-  // 메뉴 등록
+  // 메뉴
   // =========================
   const createMenu = async () => {
-    if (!selectedStore || !menuName || !price) {
-      alert("값 입력해라");
-      return;
-    }
-
     await API.post("/menus", {
       store: selectedStore,
       name: menuName,
@@ -93,9 +87,42 @@ function AdminPage() {
     fetchMenus();
   };
 
+  const deleteMenu = async (id) => {
+    await API.delete(`/menus/${id}`);
+    fetchMenus();
+  };
+
+  const startEditMenu = (m) => {
+    setEditMenuId(m._id);
+    setMenuName(m.name);
+    setPrice(m.price);
+  };
+
+  const updateMenu = async () => {
+    await API.put(`/menus/${editMenuId}`, {
+      name: menuName,
+      price: Number(price)
+    });
+
+    setEditMenuId(null);
+    setMenuName("");
+    setPrice("");
+    fetchMenus();
+  };
+
   // =========================
-  // UI
+  // 주문 관리
   // =========================
+  const deleteOrder = async (id) => {
+    await API.delete(`/orders/${id}`);
+    fetchOrders();
+  };
+
+  const changeStatus = async (id, status) => {
+    await API.put(`/orders/${id}/status`, { status });
+    fetchOrders();
+  };
+
   return (
     <div className="container">
 
@@ -104,8 +131,7 @@ function AdminPage() {
         <button onClick={logout}>로그아웃</button>
       </div>
 
-      {/* 🔥 탭 */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+      <div style={{ display: "flex", gap: 10 }}>
         <button onClick={() => setTab("store")}>가게관리</button>
         <button onClick={() => setTab("menu")}>메뉴관리</button>
         <button onClick={() => setTab("order")}>주문관리</button>
@@ -117,66 +143,46 @@ function AdminPage() {
       {tab === "store" && (
         <>
           <div className="card">
-            <input
-              placeholder="가게 이름"
-              value={storeName}
-              onChange={(e) => setStoreName(e.target.value)}
-            />
-            <button onClick={createStore}>가게 등록</button>
+            <input value={storeName} onChange={(e)=>setStoreName(e.target.value)} />
+            <button onClick={createStore}>등록</button>
           </div>
 
-          <h3>📋 가게 목록</h3>
           {stores.map((s, i) => (
-            <div
-              key={i}
-              className="card"
-              style={{
-                cursor: "pointer",
-                border: selectedStore === s ? "2px solid blue" : "1px solid #ddd"
-              }}
-              onClick={() => {
-                setSelectedStore(s);
-                setTab("menu");
-              }}
-            >
-              {s}
+            <div key={i} className="card">
+              <b>{s}</b>
+              <button onClick={()=>setSelectedStore(s)}>선택</button>
+              <button onClick={()=>deleteStore(s)}>삭제</button>
             </div>
           ))}
         </>
       )}
 
       {/* =========================
-          🍽️ 메뉴 관리
+          🍽 메뉴 관리
       ========================= */}
       {tab === "menu" && (
         <>
-          <h3>🍽️ {selectedStore || "가게 선택 필요"}</h3>
+          <h3>{selectedStore}</h3>
 
-          {selectedStore && (
-            <div className="card">
-              <input
-                placeholder="메뉴명"
-                value={menuName}
-                onChange={(e) => setMenuName(e.target.value)}
-              />
-              <input
-                placeholder="가격"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-              />
-              <button onClick={createMenu}>메뉴 추가</button>
+          <div className="card">
+            <input value={menuName} onChange={(e)=>setMenuName(e.target.value)} />
+            <input value={price} onChange={(e)=>setPrice(e.target.value)} />
+
+            {editMenuId ? (
+              <button onClick={updateMenu}>수정</button>
+            ) : (
+              <button onClick={createMenu}>등록</button>
+            )}
+          </div>
+
+          {menus.filter(m=>m.store===selectedStore).map(m=>(
+            <div key={m._id} className="card">
+              {m.name} - {m.price}
+
+              <button onClick={()=>startEditMenu(m)}>수정</button>
+              <button onClick={()=>deleteMenu(m._id)}>삭제</button>
             </div>
-          )}
-
-          <h3>📋 메뉴 목록</h3>
-          {menus
-            .filter(m => m.store === selectedStore)
-            .map((m) => (
-              <div key={m._id} className="card">
-                <b>{m.name}</b>
-                <p>{m.price}원</p>
-              </div>
-            ))}
+          ))}
         </>
       )}
 
@@ -185,14 +191,25 @@ function AdminPage() {
       ========================= */}
       {tab === "order" && (
         <>
-          <h3>📦 전체 주문</h3>
-
-          {orders.map((o) => (
+          {orders.map(o => (
             <div key={o._id} className="card">
               <b>{o.store}</b>
               <p>{o.address}</p>
-              <p>상태: {o.status}</p>
-              <p>기사: {o.driver_id || "없음"}</p>
+              <p>{o.status}</p>
+
+              <select
+                value={o.status}
+                onChange={(e)=>changeStatus(o._id, e.target.value)}
+              >
+                <option value="pending">pending</option>
+                <option value="accepted">accepted</option>
+                <option value="dispatch_ready">dispatch_ready</option>
+                <option value="assigned">assigned</option>
+                <option value="delivering">delivering</option>
+                <option value="completed">completed</option>
+              </select>
+
+              <button onClick={()=>deleteOrder(o._id)}>삭제</button>
             </div>
           ))}
         </>

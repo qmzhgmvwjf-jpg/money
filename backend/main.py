@@ -140,6 +140,25 @@ def get_menus():
     ]
 
 # =========================
+# 🍽️ 메뉴 삭제
+# =========================
+@app.delete("/menus/{id}")
+def delete_menu(id: str):
+    db.menus.delete_one({"_id": ObjectId(id)})
+    return {"ok": True}
+
+# =========================
+# 🍽️ 메뉴 수정
+# =========================
+@app.put("/menus/{id}")
+def update_menu(id: str, data: dict):
+    db.menus.update_one(
+        {"_id": ObjectId(id)},
+        {"$set": data}
+    )
+    return {"ok": True}
+
+# =========================
 # 📦 주문 생성 (고객)
 # =========================
 @app.post("/orders")
@@ -175,6 +194,25 @@ def get_orders(user=Depends(get_current_user)):
         }
         for o in db.orders.find()
     ]
+
+# =========================
+# 📦 주문 삭제
+# =========================
+@app.delete("/orders/{id}")
+def delete_order(id: str):
+    db.orders.delete_one({"_id": ObjectId(id)})
+    return {"ok": True}
+
+# =========================
+# 📦 주문 상태 변경
+# =========================
+@app.put("/orders/{id}/status")
+def update_status(id: str, data: dict):
+    db.orders.update_one(
+        {"_id": ObjectId(id)},
+        {"$set": {"status": data["status"]}}
+    )
+    return {"ok": True}
 
 # =========================
 # 🏪 가게 수락
