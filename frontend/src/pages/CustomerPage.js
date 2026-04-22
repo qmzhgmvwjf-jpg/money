@@ -124,12 +124,16 @@ function CustomerPage() {
       </div>
 
       {/* 🔥 검색 바 */}
-      <div
-        className="card"
-        onClick={() => setPage("search")}
-        style={{ cursor: "pointer" }}
-      >
-        🔍 메뉴, 음식점을 검색하세요
+      <div className="card">
+        <input
+          placeholder="🏪 음식점을 검색하세요"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage("search"); // 🔥 입력하면 바로 검색모드
+          }}
+          style={{ width: "100%", padding: 10 }}
+        />
       </div>
 
       {/* =========================
@@ -171,21 +175,20 @@ function CustomerPage() {
       ========================= */}
       {page === "search" && (
         <>
-          <input
-            placeholder="검색"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <h3>🔍 검색 결과</h3>
 
-          {menus
-            .filter(m =>
-              m.name.includes(search) ||
-              m.store.includes(search)
-            )
-            .map(m => (
-              <div key={m._id} className="card">
-                {m.store} - {m.name}
-                <button onClick={() => addToCart(m)}>담기</button>
+         {stores
+            .filter(s => s.includes(search))
+            .map((s, i) => (
+              <div
+                key={i}
+                className="card"
+                onClick={() => {
+                  setSelectedStore(s);
+                  setPage("home");
+                }}
+              >
+                {s}
               </div>
             ))}
         </>
@@ -248,23 +251,26 @@ function CustomerPage() {
       {/* =========================
           🔥 하단바
       ========================= */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: 0,
-          width: "100%",
-          display: "flex",
-          justifyContent: "space-around",
-          background: "#fff",
-          padding: 10,
-          borderTop: "1px solid #ddd"
-        }}
-      >
-        <button onClick={() => setPage("home")}>🏠</button>
-        <button onClick={() => setPage("search")}>🔍</button>
-        <button onClick={() => setPage("cart")}>🛒</button>
-        <button onClick={() => setPage("mypage")}>👤</button>
-      </div>
+<div
+  style={{
+    position: "fixed",
+    bottom: 0,
+    left: 0, // 🔥 추가
+    width: "100%",
+    display: "flex",
+    justifyContent: "space-around",
+    alignItems: "center",
+    background: "#fff",
+    padding: "10px 0",
+    borderTop: "1px solid #ddd",
+    zIndex: 1000
+  }}
+>
+  <button style={{ flex: 1 }} onClick={() => setPage("home")}>🏠 홈</button>
+  <button style={{ flex: 1 }} onClick={() => setPage("search")}>🔍 검색</button>
+  <button style={{ flex: 1 }} onClick={() => setPage("cart")}>🛒 장바구니</button>
+  <button style={{ flex: 1 }} onClick={() => setPage("mypage")}>👤 마이</button>
+</div>
 
     </div>
   );
