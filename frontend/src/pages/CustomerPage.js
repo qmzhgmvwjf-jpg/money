@@ -10,7 +10,7 @@ function CustomerPage() {
   const [selectedStore, setSelectedStore] = useState(null);
   const [cart, setCart] = useState([]);
 
-  const [page, setPage] = useState("home"); // home search cart mypage
+  const [page, setPage] = useState("home"); // home search store cart mypage
 
   const [loading, setLoading] = useState(false);
 
@@ -111,6 +111,15 @@ function CustomerPage() {
     navigate("/");
   };
 
+  const openStorePage = (store) => {
+    setSelectedStore(store);
+    setPage("store");
+  };
+
+  const filteredStores = stores.filter((store) =>
+    store.toLowerCase().includes(search.toLowerCase())
+  );
+
   // =========================
   // UI
   // =========================
@@ -127,13 +136,13 @@ function CustomerPage() {
       {(page === "home" || page === "search") && (
   <div className="card">
     <input
+      className="full-input"
       placeholder="🏪 음식점을 검색하세요"
       value={search}
       onChange={(e) => {
         setSearch(e.target.value);
         setPage("search");
       }}
-      style={{ width: "100%", padding: 10 }}
     />
   </div>
 )}
@@ -148,26 +157,11 @@ function CustomerPage() {
             <div
               key={i}
               className="card"
-              onClick={() => setSelectedStore(s)}
+              onClick={() => openStorePage(s)}
             >
               {s}
             </div>
           ))}
-
-          {selectedStore && (
-            <>
-              <h3>{selectedStore}</h3>
-
-              {menus
-                .filter(m => m.store === selectedStore)
-                .map(m => (
-                  <div key={m._id} className="card">
-                    {m.name} - {m.price}
-                    <button onClick={() => addToCart(m)}>담기</button>
-                  </div>
-                ))}
-            </>
-          )}
         </>
       )}
 
@@ -178,18 +172,37 @@ function CustomerPage() {
         <>
           <h3>🔍 검색 결과</h3>
 
-         {stores
-            .filter(s => s.includes(search))
-            .map((s, i) => (
+         {filteredStores.map((s, i) => (
               <div
                 key={i}
                 className="card"
-                onClick={() => {
-                  setSelectedStore(s);
-                  setPage("home");
-                }}
+                onClick={() => openStorePage(s)}
               >
                 {s}
+              </div>
+            ))}
+        </>
+      )}
+
+      {/* =========================
+          🏪 가게 상세
+      ========================= */}
+      {page === "store" && selectedStore && (
+        <>
+          <div className="header">
+            <h3>🏪 {selectedStore}</h3>
+            <button onClick={() => setPage(search ? "search" : "home")}>
+              뒤로가기
+            </button>
+          </div>
+
+          {menus
+            .filter(m => m.store === selectedStore)
+            .map(m => (
+              <div key={m._id} className="card">
+                <div>{m.name}</div>
+                <div>{m.price}</div>
+                <button onClick={() => addToCart(m)}>담기</button>
               </div>
             ))}
         </>
@@ -225,13 +238,21 @@ function CustomerPage() {
 
           <div className="card">
             주소
-            <input value={addressInput} onChange={(e)=>setAddressInput(e.target.value)} />
+            <input
+              className="full-input"
+              value={addressInput}
+              onChange={(e) => setAddressInput(e.target.value)}
+            />
             <button onClick={saveAddress}>저장</button>
           </div>
 
           <div className="card">
             전화번호
-            <input value={phone} onChange={(e)=>setPhone(e.target.value)} />
+            <input
+              className="full-input"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
             <button onClick={savePhone}>저장</button>
           </div>
 
