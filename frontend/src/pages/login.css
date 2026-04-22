@@ -45,7 +45,7 @@
    background: rgba(0,0,0,0.5); /* 🔥 */
   box-shadow: 0 0 40px rgba(0,0,0,0.5);
   text-align: center;
-  color: white;
+  color: black;
 }
 
 /* 로고 */
@@ -64,6 +64,7 @@
   font-size: 14px;
   opacity: 0.7;
   margin-bottom: 20px;
+  color: #555;
 }
 
 /* 입력 */
