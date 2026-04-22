@@ -1,0 +1,104 @@
+/* 전체 배경 */
+.login-wrapper {
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: black;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 🔥 그라데이션 배경 */
+.bg {
+  position: absolute;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at 30% 30%, #3a7bd5, transparent),
+              radial-gradient(circle at 70% 70%, #00d2ff, transparent);
+  animation: moveBg 10s infinite alternate;
+}
+
+@keyframes moveBg {
+  0% { transform: translate(0,0); }
+  100% { transform: translate(-10%, -10%); }
+}
+
+/* 🔥 글로우 */
+.glow {
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  background: #00d2ff;
+  filter: blur(200px);
+  opacity: 0.4;
+}
+
+/* 🔥 카드 */
+.login-card {
+  position: relative;
+  z-index: 2;
+  width: 350px;
+  padding: 40px;
+  border-radius: 20px;
+  backdrop-filter: blur(20px);
+  background: rgba(255,255,255,0.05);
+  box-shadow: 0 0 40px rgba(0,0,0,0.5);
+  text-align: center;
+  color: white;
+}
+
+/* 로고 */
+.logo {
+  font-size: 40px;
+  margin-bottom: 10px;
+}
+
+/* 타이틀 */
+.login-card h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.subtitle {
+  font-size: 14px;
+  opacity: 0.7;
+  margin-bottom: 20px;
+}
+
+/* 입력 */
+.input-group input {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 15px;
+  border-radius: 10px;
+  border: none;
+  outline: none;
+  background: rgba(255,255,255,0.1);
+  color: white;
+}
+
+/* 버튼 */
+.login-btn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(45deg, #00d2ff, #3a7bd5);
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.login-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 20px #00d2ff;
+}
+
+/* 하단 */
+.footer {
+  margin-top: 20px;
+  font-size: 12px;
+  opacity: 0.5;
+}
