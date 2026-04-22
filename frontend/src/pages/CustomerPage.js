@@ -67,6 +67,7 @@ function CustomerPage() {
       alert("주문 완료!");
       setCart([]);
       setSelectedStore(null);
+      navigate("/tracking");
 
     } catch (err) {
       console.log(err);

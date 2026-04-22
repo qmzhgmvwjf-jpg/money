@@ -171,6 +171,7 @@ def create_order(order: Order, user=Depends(get_current_user)):
         "store": order.store,
         "address": order.address,
         "items": order.items,
+        "user": user["username"],
         "status": "pending",   # 🔥 가게 대기
         "driver_id": None,
         "created_at": datetime.utcnow()
@@ -194,6 +195,21 @@ def get_orders(user=Depends(get_current_user)):
             "created_at": o.get("created_at")
         }
         for o in db.orders.find()
+    ]
+
+# =========================
+# 📦 내 주문 조회
+# =========================
+@app.get("/my-orders")
+def my_orders(user=Depends(get_current_user)):
+    return [
+        {
+            "_id": str(o["_id"]),
+            "store": o.get("store"),
+            "status": o.get("status"),
+            "created_at": o.get("created_at")
+        }
+        for o in db.orders.find({"user": user["username"]})
     ]
 
 # =========================
