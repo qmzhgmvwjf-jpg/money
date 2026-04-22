@@ -10,9 +10,12 @@ function CustomerPage() {
   const [selectedStore, setSelectedStore] = useState(null);
   const [cart, setCart] = useState([]);
 
-  const [page, setPage] = useState("order"); // order | mypage
+  const [page, setPage] = useState("order");
 
-  const [loading, setLoading] = useState(false); // 🔥 추가
+  const [loading, setLoading] = useState(false);
+
+  // 🔥 최근 주문 존재 여부 (추가)
+  const [hasOrder, setHasOrder] = useState(false);
 
   // =========================
   // 메뉴 불러오기
@@ -25,12 +28,23 @@ function CustomerPage() {
     setStores(uniqueStores);
   };
 
+  // 🔥 내 주문 체크 (추가)
+  const checkMyOrders = async () => {
+    try {
+      const res = await API.get("/my-orders");
+      setHasOrder(res.data.length > 0);
+    } catch (e) {
+      console.log(e);
+    }
+  };
+
   useEffect(() => {
     fetchMenus();
+    checkMyOrders(); // 🔥 추가
   }, []);
 
   // =========================
-  // 🛒 장바구니 (같은 가게만)
+  // 장바구니
   // =========================
   const addToCart = (menu) => {
     if (cart.length > 0 && cart[0].store !== menu.store) {
@@ -44,7 +58,7 @@ function CustomerPage() {
   };
 
   // =========================
-  // 주문하기
+  // 주문
   // =========================
   const order = async () => {
     if (cart.length === 0) {
@@ -60,7 +74,7 @@ function CustomerPage() {
     }
 
     try {
-      setLoading(true); // 🔥 시작
+      setLoading(true);
 
       await API.post("/orders", {
         store: selectedStore,
@@ -73,13 +87,15 @@ function CustomerPage() {
       setCart([]);
       setSelectedStore(null);
 
+      setHasOrder(true); // 🔥 주문 생겼으니까 true
+
       navigate("/tracking");
 
     } catch (err) {
       console.log(err);
       alert("주문 실패");
     } finally {
-      setLoading(false); // 🔥 무조건 해제
+      setLoading(false);
     }
   };
 
@@ -100,9 +116,6 @@ function CustomerPage() {
     navigate("/");
   };
 
-  // =========================
-  // 총 금액 계산 (추가 UX)
-  // =========================
   const totalPrice = cart.reduce((sum, item) => sum + item.price, 0);
 
   // =========================
@@ -111,17 +124,28 @@ function CustomerPage() {
   return (
     <div className="container">
 
-      {/* 🔥 상단 메뉴 */}
+      {/* 🔥 상단 */}
       <div className="header">
         <h2>🍽️ 배달앱</h2>
+
         <div>
           <button onClick={() => setPage("order")}>주문</button>
           <button onClick={() => setPage("mypage")}>마이페이지</button>
+
+          {/* 🔥 핵심 추가 버튼 */}
+          {hasOrder && (
+            <button
+              onClick={() => navigate("/tracking")}
+              style={{ marginLeft: 10 }}
+            >
+              📦 주문조회
+            </button>
+          )}
         </div>
       </div>
 
       {/* =========================
-          🍽️ 주문 페이지
+          주문 페이지
       ========================= */}
       {page === "order" && (
         <>
@@ -164,7 +188,6 @@ function CustomerPage() {
             </>
           )}
 
-          {/* 🛒 장바구니 */}
           <h3>🛒 장바구니</h3>
 
           {cart.map((c, i) => (
@@ -173,7 +196,6 @@ function CustomerPage() {
             </div>
           ))}
 
-          {/* 🔥 총 금액 */}
           {cart.length > 0 && (
             <div style={{ marginTop: 10 }}>
               <b>총 금액: {totalPrice}원</b>
@@ -184,16 +206,16 @@ function CustomerPage() {
             <button
               className="primary btn"
               onClick={order}
-              disabled={loading} // 🔥 클릭 방지
+              disabled={loading}
             >
-              {loading ? "주문중..." : "주문하기"} {/* 🔥 상태 표시 */}
+              {loading ? "주문중..." : "주문하기"}
             </button>
           )}
         </>
       )}
 
       {/* =========================
-          👤 마이페이지
+          마이페이지
       ========================= */}
       {page === "mypage" && (
         <>
