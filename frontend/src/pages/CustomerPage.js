@@ -12,6 +12,8 @@ function CustomerPage() {
 
   const [page, setPage] = useState("order"); // order | mypage
 
+  const [loading, setLoading] = useState(false); // 🔥 추가
+
   // =========================
   // 메뉴 불러오기
   // =========================
@@ -58,6 +60,8 @@ function CustomerPage() {
     }
 
     try {
+      setLoading(true); // 🔥 시작
+
       await API.post("/orders", {
         store: selectedStore,
         items: cart,
@@ -65,13 +69,17 @@ function CustomerPage() {
       });
 
       alert("주문 완료!");
+
       setCart([]);
       setSelectedStore(null);
+
       navigate("/tracking");
 
     } catch (err) {
       console.log(err);
       alert("주문 실패");
+    } finally {
+      setLoading(false); // 🔥 무조건 해제
     }
   };
 
@@ -91,6 +99,11 @@ function CustomerPage() {
     localStorage.clear();
     navigate("/");
   };
+
+  // =========================
+  // 총 금액 계산 (추가 UX)
+  // =========================
+  const totalPrice = cart.reduce((sum, item) => sum + item.price, 0);
 
   // =========================
   // UI
@@ -160,9 +173,20 @@ function CustomerPage() {
             </div>
           ))}
 
+          {/* 🔥 총 금액 */}
+          {cart.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <b>총 금액: {totalPrice}원</b>
+            </div>
+          )}
+
           {selectedStore && (
-            <button className="primary btn" onClick={order}>
-              주문하기
+            <button
+              className="primary btn"
+              onClick={order}
+              disabled={loading} // 🔥 클릭 방지
+            >
+              {loading ? "주문중..." : "주문하기"} {/* 🔥 상태 표시 */}
             </button>
           )}
         </>
