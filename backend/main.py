@@ -7,6 +7,7 @@ from bson import ObjectId
 from jose import jwt
 from fastapi.responses import JSONResponse
 from datetime import datetime
+from datetime import datetime
 
 app = FastAPI()
 
@@ -291,3 +292,51 @@ def complete_order(order_id: str, user=Depends(get_current_user)):
         {"$set": {"status": "completed"}}
     )
     return {"message": "completed"}
+
+# =========================
+# ✅ 관리자 통계
+# =========================
+@app.get("/stats")
+def get_stats():
+    orders = list(db.orders.find())
+
+    total_orders = len(orders)
+
+    total_sales = 0
+    today_orders = 0
+    store_sales = {}
+    status_count = {}
+
+    today = datetime.utcnow().date()
+
+    for o in orders:
+        items = o.get("items", [])
+        status = o.get("status")
+        store = o.get("store")
+
+        # 💰 매출 계산
+        order_total = sum(item.get("price", 0) for item in items)
+        total_sales += order_total
+
+        # 📅 오늘 주문
+        created = o.get("created_at")
+        if created and created.date() == today:
+            today_orders += 1
+
+        # 🏪 가게별 매출
+        if store not in store_sales:
+            store_sales[store] = 0
+        store_sales[store] += order_total
+
+        # 📊 상태별
+        if status not in status_count:
+            status_count[status] = 0
+        status_count[status] += 1
+
+    return {
+        "total_orders": total_orders,
+        "total_sales": total_sales,
+        "today_orders": today_orders,
+        "store_sales": store_sales,
+        "status_count": status_count
+    }
