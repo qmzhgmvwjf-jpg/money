@@ -10,15 +10,24 @@ function CustomerPage() {
   const [selectedStore, setSelectedStore] = useState(null);
   const [cart, setCart] = useState([]);
 
-  const [page, setPage] = useState("order");
+  const [page, setPage] = useState("home"); // home search cart mypage
 
   const [loading, setLoading] = useState(false);
 
-  // 🔥 최근 주문 존재 여부 (추가)
-  const [hasOrder, setHasOrder] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const [orders, setOrders] = useState([]);
+
+  const [phone, setPhone] = useState(
+    localStorage.getItem("phone") || ""
+  );
+
+  const [addressInput, setAddressInput] = useState(
+    localStorage.getItem("address") || ""
+  );
 
   // =========================
-  // 메뉴 불러오기
+  // 데이터
   // =========================
   const fetchMenus = async () => {
     const res = await API.get("/menus");
@@ -28,19 +37,14 @@ function CustomerPage() {
     setStores(uniqueStores);
   };
 
-  // 🔥 내 주문 체크 (추가)
-  const checkMyOrders = async () => {
-    try {
-      const res = await API.get("/my-orders");
-      setHasOrder(res.data.length > 0);
-    } catch (e) {
-      console.log(e);
-    }
+  const fetchOrders = async () => {
+    const res = await API.get("/my-orders");
+    setOrders(res.data);
   };
 
   useEffect(() => {
     fetchMenus();
-    checkMyOrders(); // 🔥 추가
+    fetchOrders();
   }, []);
 
   // =========================
@@ -48,7 +52,7 @@ function CustomerPage() {
   // =========================
   const addToCart = (menu) => {
     if (cart.length > 0 && cart[0].store !== menu.store) {
-      if (window.confirm("다른 가게입니다. 장바구니를 비우고 담을까요?")) {
+      if (window.confirm("다른 가게입니다. 장바구니 초기화할까요?")) {
         setCart([menu]);
         setSelectedStore(menu.store);
       }
@@ -57,42 +61,32 @@ function CustomerPage() {
     }
   };
 
+  const totalPrice = cart.reduce((sum, item) => sum + item.price, 0);
+
   // =========================
   // 주문
   // =========================
   const order = async () => {
-    if (cart.length === 0) {
-      alert("장바구니 비어있음");
-      return;
-    }
+    if (cart.length === 0) return alert("장바구니 비어있음");
 
     const address = localStorage.getItem("address");
 
-    if (!address) {
-      alert("주소 먼저 입력하세요 (마이페이지)");
-      return;
-    }
+    if (!address) return alert("주소 입력하세요");
 
     try {
       setLoading(true);
 
       await API.post("/orders", {
-        store: selectedStore,
+        store: cart[0].store,
         items: cart,
-        address: address
+        address
       });
 
       alert("주문 완료!");
-
       setCart([]);
-      setSelectedStore(null);
-
-      setHasOrder(true); // 🔥 주문 생겼으니까 true
-
       navigate("/tracking");
 
-    } catch (err) {
-      console.log(err);
+    } catch {
       alert("주문 실패");
     } finally {
       setLoading(false);
@@ -100,23 +94,22 @@ function CustomerPage() {
   };
 
   // =========================
-  // 마이페이지
+  // 저장
   // =========================
-  const [addressInput, setAddressInput] = useState(
-    localStorage.getItem("address") || ""
-  );
-
   const saveAddress = () => {
     localStorage.setItem("address", addressInput);
     alert("주소 저장됨");
+  };
+
+  const savePhone = () => {
+    localStorage.setItem("phone", phone);
+    alert("번호 저장됨");
   };
 
   const logout = () => {
     localStorage.clear();
     navigate("/");
   };
-
-  const totalPrice = cart.reduce((sum, item) => sum + item.price, 0);
 
   // =========================
   // UI
@@ -126,120 +119,153 @@ function CustomerPage() {
 
       {/* 🔥 상단 */}
       <div className="header">
-        <h2>🍽️ 배달앱</h2>
+        <h2>🚀 Delivery OS</h2>
+        <p>{localStorage.getItem("address") || "주소 설정 필요"}</p>
+      </div>
 
-        <div>
-          <button onClick={() => setPage("order")}>주문</button>
-          <button onClick={() => setPage("mypage")}>마이페이지</button>
-
-          {/* 🔥 핵심 추가 버튼 */}
-          {hasOrder && (
-            <button
-              onClick={() => navigate("/tracking")}
-              style={{ marginLeft: 10 }}
-            >
-              📦 주문조회
-            </button>
-          )}
-        </div>
+      {/* 🔥 검색 바 */}
+      <div
+        className="card"
+        onClick={() => setPage("search")}
+        style={{ cursor: "pointer" }}
+      >
+        🔍 메뉴, 음식점을 검색하세요
       </div>
 
       {/* =========================
-          주문 페이지
+          🏠 홈
       ========================= */}
-      {page === "order" && (
+      {page === "home" && (
         <>
-          {!selectedStore && (
-            <>
-              <h3>🏪 가게 선택</h3>
-              {stores.map((store, i) => (
-                <div
-                  key={i}
-                  className="card"
-                  onClick={() => setSelectedStore(store)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <b>{store}</b>
-                </div>
-              ))}
-            </>
-          )}
+          <h3>🏪 추천 가게</h3>
+
+          {stores.map((s, i) => (
+            <div
+              key={i}
+              className="card"
+              onClick={() => setSelectedStore(s)}
+            >
+              {s}
+            </div>
+          ))}
 
           {selectedStore && (
             <>
-              <button onClick={() => setSelectedStore(null)}>
-                ← 가게 목록
-              </button>
-
               <h3>{selectedStore}</h3>
 
               {menus
                 .filter(m => m.store === selectedStore)
                 .map(m => (
                   <div key={m._id} className="card">
-                    <b>{m.name}</b>
-                    <p>{m.price}원</p>
-
-                    <button onClick={() => addToCart(m)}>
-                      담기
-                    </button>
+                    {m.name} - {m.price}
+                    <button onClick={() => addToCart(m)}>담기</button>
                   </div>
                 ))}
             </>
-          )}
-
-          <h3>🛒 장바구니</h3>
-
-          {cart.map((c, i) => (
-            <div key={i}>
-              {c.name} - {c.price}원
-            </div>
-          ))}
-
-          {cart.length > 0 && (
-            <div style={{ marginTop: 10 }}>
-              <b>총 금액: {totalPrice}원</b>
-            </div>
-          )}
-
-          {selectedStore && (
-            <button
-              className="primary btn"
-              onClick={order}
-              disabled={loading}
-            >
-              {loading ? "주문중..." : "주문하기"}
-            </button>
           )}
         </>
       )}
 
       {/* =========================
-          마이페이지
+          🔍 검색
+      ========================= */}
+      {page === "search" && (
+        <>
+          <input
+            placeholder="검색"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+
+          {menus
+            .filter(m =>
+              m.name.includes(search) ||
+              m.store.includes(search)
+            )
+            .map(m => (
+              <div key={m._id} className="card">
+                {m.store} - {m.name}
+                <button onClick={() => addToCart(m)}>담기</button>
+              </div>
+            ))}
+        </>
+      )}
+
+      {/* =========================
+          🛒 장바구니
+      ========================= */}
+      {page === "cart" && (
+        <>
+          <h3>🛒 장바구니</h3>
+
+          {cart.map((c, i) => (
+            <div key={i}>
+              {c.name} - {c.price}
+            </div>
+          ))}
+
+          <b>총 금액: {totalPrice}</b>
+
+          <button onClick={order} disabled={loading}>
+            {loading ? "주문중..." : "주문하기"}
+          </button>
+        </>
+      )}
+
+      {/* =========================
+          👤 마이페이지
       ========================= */}
       {page === "mypage" && (
         <>
           <h3>👤 마이페이지</h3>
 
           <div className="card">
-            <p>📍 주소</p>
-
-            <input
-              placeholder="주소 입력"
-              value={addressInput}
-              onChange={(e) => setAddressInput(e.target.value)}
-            />
-
-            <button onClick={saveAddress}>
-              저장
-            </button>
+            주소
+            <input value={addressInput} onChange={(e)=>setAddressInput(e.target.value)} />
+            <button onClick={saveAddress}>저장</button>
           </div>
 
-          <button onClick={logout} style={{ marginTop: 20 }}>
-            로그아웃
-          </button>
+          <div className="card">
+            전화번호
+            <input value={phone} onChange={(e)=>setPhone(e.target.value)} />
+            <button onClick={savePhone}>저장</button>
+          </div>
+
+          <h3>📦 주문내역</h3>
+          {orders.map(o => (
+            <div key={o._id} className="card">
+              {o.store} - {o.status}
+              <button onClick={() => navigate("/tracking")}>
+                추적
+              </button>
+            </div>
+          ))}
+
+          <button onClick={logout}>로그아웃</button>
         </>
       )}
+
+      {/* =========================
+          🔥 하단바
+      ========================= */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: 0,
+          width: "100%",
+          display: "flex",
+          justifyContent: "space-around",
+          background: "#fff",
+          padding: 10,
+          borderTop: "1px solid #ddd"
+        }}
+      >
+        <button onClick={() => setPage("home")}>🏠</button>
+        <button onClick={() => setPage("search")}>🔍</button>
+        <button onClick={() => setPage("cart")}>🛒</button>
+        <button onClick={() => setPage("mypage")}>👤</button>
+      </div>
+
     </div>
   );
 }
