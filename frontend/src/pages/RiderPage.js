@@ -6,6 +6,7 @@ function RiderPage() {
   const navigate = useNavigate();
 
   const [orders, setOrders] = useState([]);
+  const [notices, setNotices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [prevCount, setPrevCount] = useState(0);
 
@@ -46,6 +47,17 @@ function RiderPage() {
     }
   }, [logout, prevCount]);
 
+  const fetchNotices = useCallback(async () => {
+    try {
+      const res = await API.get("/notices");
+      setNotices(res.data);
+    } catch (err) {
+      if (err.response?.status === 401) {
+        logout();
+      }
+    }
+  }, [logout]);
+
   useEffect(() => {
     const token = localStorage.getItem("token");
     const role = localStorage.getItem("role");
@@ -56,10 +68,11 @@ function RiderPage() {
     }
 
     fetchOrders();
+    fetchNotices();
 
     const interval = setInterval(fetchOrders, 3000);
     return () => clearInterval(interval);
-  }, [navigate, fetchOrders]);
+  }, [navigate, fetchOrders, fetchNotices]);
 
   // 🚀 액션
   const accept = async (id) => {
@@ -98,6 +111,18 @@ function RiderPage() {
         <h2>🚴 기사</h2>
         <button onClick={logout}>로그아웃</button>
       </div>
+
+      <h3>📢 공지사항</h3>
+      {notices.length === 0 && (
+        <div className="card">표시할 공지가 없습니다.</div>
+      )}
+      {notices.map((notice) => (
+        <div key={notice._id} className="card">
+          <b>{notice.title}</b>
+          <p>{notice.content}</p>
+          <p>대상: {notice.target === "all" ? "전체" : "기사"}</p>
+        </div>
+      ))}
 
       {/* 🔴 배차 요청 */}
       <h3>📦 배차 요청</h3>

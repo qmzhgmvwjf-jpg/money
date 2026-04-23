@@ -6,6 +6,7 @@ function StorePage() {
   const navigate = useNavigate();
 
   const [orders, setOrders] = useState([]);
+  const [notices, setNotices] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const storeName = localStorage.getItem("storeName");
@@ -32,6 +33,15 @@ function StorePage() {
     }
   }, [logout]);
 
+  const fetchNotices = useCallback(async () => {
+    try {
+      const res = await API.get("/notices");
+      setNotices(res.data);
+    } catch (err) {
+      if (err.response?.status === 401) logout();
+    }
+  }, [logout]);
+
   useEffect(() => {
     if (localStorage.getItem("role") !== "store") {
       navigate("/");
@@ -39,9 +49,10 @@ function StorePage() {
     }
 
     fetchOrders();
+    fetchNotices();
     const interval = setInterval(fetchOrders, 3000);
     return () => clearInterval(interval);
-  }, [navigate, fetchOrders]);
+  }, [navigate, fetchOrders, fetchNotices]);
 
   // 🔥 필터
   const myOrders = orders.filter(o => o.store === storeName);
@@ -78,6 +89,18 @@ function StorePage() {
         <h2>🏪 {storeName}</h2>
         <button onClick={logout}>로그아웃</button>
       </div>
+
+      <h3>📢 공지사항</h3>
+      {notices.length === 0 && (
+        <div className="card">표시할 공지가 없습니다.</div>
+      )}
+      {notices.map((notice) => (
+        <div key={notice._id} className="card">
+          <b>{notice.title}</b>
+          <p>{notice.content}</p>
+          <p>대상: {notice.target === "all" ? "전체" : "가게"}</p>
+        </div>
+      ))}
 
       {/* 🟡 주문 요청 */}
       <h3>🟡 주문 요청</h3>

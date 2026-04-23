@@ -10,6 +10,10 @@ body {
   padding: 20px;
 }
 
+.admin-container {
+  max-width: 900px;
+}
+
 .header {
   display: flex;
   justify-content: space-between;
@@ -51,6 +55,47 @@ select {
 .full-width-btn {
   width: 100%;
   margin-top: 12px;
+}
+
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 20px;
+}
+
+.admin-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.admin-row button {
+  margin-left: 6px;
+  margin-bottom: 6px;
+}
+
+.admin-detail {
+  border: 2px solid #2f80ed;
+}
+
+.mini-card {
+  background: #f5f6fa;
+  padding: 8px;
+  border-radius: 8px;
+  margin-top: 6px;
+}
+
+.admin-textarea {
+  width: 100%;
+  min-height: 110px;
+  padding: 10px;
+  margin-top: 10px;
+  box-sizing: border-box;
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  resize: vertical;
 }
 
 button {
