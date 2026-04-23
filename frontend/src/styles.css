@@ -71,6 +71,12 @@ select {
   align-items: flex-start;
 }
 
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
 .admin-row button {
   margin-left: 6px;
   margin-bottom: 6px;
@@ -85,6 +91,18 @@ select {
   padding: 8px;
   border-radius: 8px;
   margin-top: 6px;
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
 }
 
 .admin-textarea {

@@ -1,5 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import API from "../../api";
+
+function formatDate(value) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("ko-KR");
+}
 
 function StoresTab() {
   const [stores, setStores] = useState([]);
@@ -15,25 +20,23 @@ function StoresTab() {
     phone: "",
     storeStatus: "open",
   });
-  const [menuForm, setMenuForm] = useState({
-    storeName: "",
-    name: "",
-    price: "",
-  });
-  const [editingMenuId, setEditingMenuId] = useState(null);
+  const [selectedStoreId, setSelectedStoreId] = useState(null);
 
-  const fetchStores = async () => {
+  const fetchStores = useCallback(async () => {
     const res = await API.get("/stores");
     setStores(res.data);
-  };
+    if (!selectedStoreId && res.data.length > 0) {
+      setSelectedStoreId(res.data[0]._id);
+    }
+  }, [selectedStoreId]);
 
   useEffect(() => {
     fetchStores();
-  }, []);
+  }, [fetchStores]);
 
   const createStore = async () => {
     if (!form.username || !form.password || !form.phone || !form.storeName) {
-      alert("가게 등록 정보를 모두 입력하세요.");
+      alert("가게 정보를 모두 입력하세요.");
       return;
     }
 
@@ -41,7 +44,6 @@ function StoresTab() {
       ...form,
       storeStatus: "open",
     });
-
     setForm({
       username: "",
       password: "",
@@ -66,71 +68,19 @@ function StoresTab() {
     fetchStores();
   };
 
-  const toggleStoreStatus = async (store) => {
+  const toggleStatus = async (store) => {
     const nextStatus = store.storeStatus === "open" ? "closed" : "open";
     await API.put(`/stores/${store._id}`, { storeStatus: nextStatus });
     fetchStores();
   };
 
   const deleteStore = async (id) => {
-    if (!window.confirm("가게를 삭제할까요? 등록 메뉴도 함께 삭제됩니다.")) return;
-
+    if (!window.confirm("가게를 삭제할까요?")) return;
     await API.delete(`/stores/${id}`);
     fetchStores();
   };
 
-  const startCreateMenu = (store) => {
-    setEditingMenuId(null);
-    setMenuForm({
-      storeName: store.storeName,
-      name: "",
-      price: "",
-    });
-  };
-
-  const startEditMenu = (store, menu) => {
-    setEditingMenuId(menu._id);
-    setMenuForm({
-      storeName: store.storeName,
-      name: menu.name,
-      price: String(menu.price),
-    });
-  };
-
-  const saveMenu = async () => {
-    if (!menuForm.storeName || !menuForm.name || !menuForm.price) {
-      alert("메뉴 정보를 입력하세요.");
-      return;
-    }
-
-    if (editingMenuId) {
-      await API.put(`/menus/${editingMenuId}`, {
-        name: menuForm.name,
-        price: Number(menuForm.price),
-      });
-    } else {
-      await API.post("/menus", {
-        store: menuForm.storeName,
-        name: menuForm.name,
-        price: Number(menuForm.price),
-      });
-    }
-
-    setEditingMenuId(null);
-    setMenuForm({
-      storeName: "",
-      name: "",
-      price: "",
-    });
-    fetchStores();
-  };
-
-  const deleteMenu = async (id) => {
-    if (!window.confirm("메뉴를 삭제할까요?")) return;
-
-    await API.delete(`/menus/${id}`);
-    fetchStores();
-  };
+  const selectedStore = stores.find((store) => store._id === selectedStoreId);
 
   return (
     <>
@@ -164,49 +114,49 @@ function StoresTab() {
         </button>
       </div>
 
-      {stores.map((store) => (
-        <div key={store._id} className="card">
-          {editingId === store._id ? (
-            <>
-              <input
-                placeholder="가게명"
-                value={editForm.storeName}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, storeName: e.target.value })
-                }
-              />
-              <input
-                placeholder="전화번호"
-                value={editForm.phone}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, phone: e.target.value })
-                }
-              />
-              <select
-                value={editForm.storeStatus}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, storeStatus: e.target.value })
-                }
-              >
-                <option value="open">영업중</option>
-                <option value="closed">중지</option>
-              </select>
-              <button onClick={updateStore}>저장</button>
-              <button onClick={() => setEditingId(null)}>취소</button>
-            </>
-          ) : (
-            <>
+      <div className="card">
+        <h4>가게 리스트</h4>
+        {stores.map((store) => (
+          <div key={store._id} className="mini-card">
+            {editingId === store._id ? (
+              <>
+                <input
+                  value={editForm.storeName}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, storeName: e.target.value })
+                  }
+                />
+                <input
+                  value={editForm.phone}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, phone: e.target.value })
+                  }
+                />
+                <select
+                  value={editForm.storeStatus}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, storeStatus: e.target.value })
+                  }
+                >
+                  <option value="open">영업중</option>
+                  <option value="closed">중지</option>
+                </select>
+                <button onClick={updateStore}>저장</button>
+                <button onClick={() => setEditingId(null)}>취소</button>
+              </>
+            ) : (
               <div className="admin-row">
                 <div>
                   <b>{store.storeName}</b>
                   <p>계정: {store.username}</p>
                   <p>전화번호: {store.phone}</p>
                   <p>상태: {store.storeStatus === "open" ? "영업중" : "중지"}</p>
-                  <p>주문 수: {store.orderCount}</p>
+                  <p>매출: {store.sales?.toLocaleString()}원</p>
                 </div>
                 <div>
+                  <button onClick={() => setSelectedStoreId(store._id)}>내역</button>
                   <button onClick={() => startEdit(store)}>수정</button>
-                  <button onClick={() => toggleStoreStatus(store)}>
+                  <button onClick={() => toggleStatus(store)}>
                     {store.storeStatus === "open" ? "중지" : "영업중"}
                   </button>
                   <button className="danger" onClick={() => deleteStore(store._id)}>
@@ -214,63 +164,44 @@ function StoresTab() {
                   </button>
                 </div>
               </div>
+            )}
+          </div>
+        ))}
+      </div>
 
-              <h4>메뉴</h4>
-              <button onClick={() => startCreateMenu(store)}>메뉴 추가</button>
+      {selectedStore && (
+        <div className="card">
+          <h4>{selectedStore.storeName} 운영 현황</h4>
+          <p>누적 주문: {selectedStore.orderCount}건</p>
+          <p>누적 매출: {selectedStore.sales?.toLocaleString()}원</p>
 
-              {menuForm.storeName === store.storeName && (
-                <div className="mini-card">
-                  <input
-                    placeholder="메뉴명"
-                    value={menuForm.name}
-                    onChange={(e) =>
-                      setMenuForm({ ...menuForm, name: e.target.value })
-                    }
-                  />
-                  <input
-                    placeholder="가격"
-                    value={menuForm.price}
-                    onChange={(e) =>
-                      setMenuForm({ ...menuForm, price: e.target.value })
-                    }
-                  />
-                  <button onClick={saveMenu}>
-                    {editingMenuId ? "메뉴 수정" : "메뉴 등록"}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setEditingMenuId(null);
-                      setMenuForm({
-                        storeName: "",
-                        name: "",
-                        price: "",
-                      });
-                    }}
-                  >
-                    취소
-                  </button>
-                </div>
-              )}
+          <h4>메뉴</h4>
+          {selectedStore.menus?.length > 0 ? (
+            selectedStore.menus.map((menu) => (
+              <div key={menu._id} className="mini-card">
+                {menu.name} - {menu.price}원
+              </div>
+            ))
+          ) : (
+            <p>등록된 메뉴 없음</p>
+          )}
 
-              {store.menus?.length > 0 ? (
-                store.menus.map((menu) => (
-                  <div key={menu._id} className="mini-card">
-                    {menu.name} - {menu.price}원
-                    <button onClick={() => startEditMenu(store, menu)}>
-                      수정
-                    </button>
-                    <button className="danger" onClick={() => deleteMenu(menu._id)}>
-                      삭제
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <p>등록된 메뉴 없음</p>
-              )}
-            </>
+          <h4>주문 내역</h4>
+          {selectedStore.orders?.length > 0 ? (
+            selectedStore.orders.map((order) => (
+              <div key={order._id} className="mini-card">
+                <p>{order.order_id}</p>
+                <p>{formatDate(order.created_at)}</p>
+                <p>{order.customer_name} / {order.phone}</p>
+                <p>{order.address}</p>
+                <p>{order.total_price?.toLocaleString()}원 / {order.status}</p>
+              </div>
+            ))
+          ) : (
+            <p>주문 내역 없음</p>
           )}
         </div>
-      ))}
+      )}
     </>
   );
 }

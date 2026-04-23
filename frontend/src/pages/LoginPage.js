@@ -31,6 +31,12 @@ function LoginPage() {
       if (res.data.phone) {
         localStorage.setItem("phone", res.data.phone);
       }
+      if (res.data.address) {
+        localStorage.setItem("address", res.data.address);
+      }
+      if (res.data.onlineStatus) {
+        localStorage.setItem("onlineStatus", res.data.onlineStatus);
+      }
 
       if (res.data.role === "admin") navigate("/admin");
       else if (res.data.role === "driver") navigate("/rider");
