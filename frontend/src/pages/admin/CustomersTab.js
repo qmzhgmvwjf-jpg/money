@@ -1,84 +1,81 @@
-import React, { useEffect, useState } from "react";
-import API from "../../api";
+import React, { useCallback, useState } from "react";
+import Card from "../../components/ui/Card";
+import Button from "../../components/ui/Button";
+import Input from "../../components/ui/Input";
+import { adminService } from "../../services/adminService";
+import { formatCurrency } from "../../utils/format";
+import { usePolling } from "../../hooks/usePolling";
 
 function CustomersTab() {
   const [customers, setCustomers] = useState([]);
-  const [editingCustomer, setEditingCustomer] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({ phone: "", address: "" });
 
-  const fetchCustomers = async () => {
-    const res = await API.get("/customers");
-    setCustomers(res.data);
-  };
-
-  useEffect(() => {
-    fetchCustomers();
+  const fetchCustomers = useCallback(async () => {
+    const data = await adminService.getCustomers();
+    setCustomers(data);
   }, []);
 
-  const updateCustomer = async () => {
-    await API.put(`/customers/${editingCustomer._id}`, {
-      phone: editingCustomer.phone,
-      address: editingCustomer.address,
+  usePolling(fetchCustomers, 5000);
+
+  const startEdit = (customer) => {
+    setEditingId(customer._id);
+    setEditForm({
+      phone: customer.phone || "",
+      address: customer.address || "",
     });
-    setEditingCustomer(null);
+  };
+
+  const save = async () => {
+    await adminService.updateCustomer(editingId, editForm);
+    setEditingId(null);
     fetchCustomers();
   };
 
   return (
-    <>
-      <h3>👤 고객 관리</h3>
-
+    <div className="page-stack">
       {customers.map((customer) => (
-        <div key={customer._id} className="card">
-          {editingCustomer?._id === customer._id ? (
-            <>
-              <input
-                value={editingCustomer.phone || ""}
-                onChange={(e) =>
-                  setEditingCustomer({ ...editingCustomer, phone: e.target.value })
-                }
-              />
-              <input
-                value={editingCustomer.address || ""}
-                onChange={(e) =>
-                  setEditingCustomer({ ...editingCustomer, address: e.target.value })
-                }
-              />
-              <button onClick={updateCustomer}>저장</button>
-              <button onClick={() => setEditingCustomer(null)}>취소</button>
-            </>
-          ) : (
-            <>
-              <div className="admin-grid">
-                <div>
-                  <p><b>{customer.username}</b></p>
-                  <p>전화번호: {customer.phone || "-"}</p>
-                  <p>주소: {customer.address || "-"}</p>
-                </div>
-                <div>
-                  <p>주문 수: {customer.orderCount}건</p>
-                  <p>누적 결제: {customer.totalSpent?.toLocaleString()}원</p>
-                  <button onClick={() => setEditingCustomer(customer)}>정보 수정</button>
-                </div>
-              </div>
+        <Card key={customer._id}>
+          <div className="section-heading">
+            <div>
+              <h3>{customer.username}</h3>
+              <p>{customer.phone || "-"} · {customer.address || "주소 없음"}</p>
+            </div>
+            <div>
+              <strong>{formatCurrency(customer.totalSpent)}</strong>
+            </div>
+          </div>
 
-              <h4>주문 내역</h4>
-              {customer.orders?.length > 0 ? (
-                customer.orders.map((order) => (
-                  <div key={order._id} className="mini-card">
-                    <p>{order.order_id}</p>
-                    <p>{order.store} / {order.status}</p>
-                    <p>{order.total_price?.toLocaleString()}원</p>
-                    <p>{order.address || "-"}</p>
-                  </div>
-                ))
-              ) : (
-                <p>주문 내역 없음</p>
-              )}
-            </>
+          {editingId === customer._id ? (
+            <div className="auth-form" style={{ marginTop: 16 }}>
+              <Input label="전화번호" value={editForm.phone} onChange={(event) => setEditForm((prev) => ({ ...prev, phone: event.target.value }))} />
+              <Input label="주소" value={editForm.address} onChange={(event) => setEditForm((prev) => ({ ...prev, address: event.target.value }))} />
+              <div className="list-actions">
+                <Button onClick={save}>저장</Button>
+                <Button variant="secondary" onClick={() => setEditingId(null)}>
+                  취소
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="list-actions" style={{ marginTop: 16 }}>
+              <Button variant="secondary" onClick={() => startEdit(customer)}>
+                정보 수정
+              </Button>
+            </div>
           )}
-        </div>
+
+          <Card className="mini-card" style={{ marginTop: 16 }}>
+            <strong>주문 내역</strong>
+            {customer.orders?.map((order) => (
+              <div key={order._id}>
+                {order.order_id} · {order.store} · {formatCurrency(order.total_price)} · {order.status}
+              </div>
+            ))}
+          </Card>
+        </Card>
       ))}
-    </>
+    </div>
   );
 }
 

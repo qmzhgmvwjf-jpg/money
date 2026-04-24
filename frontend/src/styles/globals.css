@@ -1,0 +1,157 @@
+@import "./theme.css";
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  background:
+    radial-gradient(circle at top left, rgba(77, 166, 255, 0.28), transparent 34%),
+    radial-gradient(circle at top right, rgba(124, 233, 214, 0.24), transparent 28%),
+    linear-gradient(160deg, #06111d 0%, #0c1730 45%, #08121f 100%);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.page-shell {
+  min-height: 100vh;
+  padding: var(--spacing-6);
+}
+
+.mobile-shell {
+  width: 100%;
+  max-width: var(--mobile-width);
+  margin: 0 auto;
+  position: relative;
+}
+
+.page-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  animation: fadeUp 420ms ease;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--spacing-4);
+}
+
+.two-column-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--spacing-4);
+}
+
+.chip-row {
+  display: flex;
+  gap: var(--spacing-2);
+  overflow-x: auto;
+  padding-bottom: var(--spacing-1);
+}
+
+.chip-row::-webkit-scrollbar {
+  display: none;
+}
+
+.soft-divider {
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.18),
+    transparent
+  );
+}
+
+.status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
+.floating-space {
+  padding-bottom: 92px;
+}
+
+.surface-glow {
+  position: relative;
+}
+
+.surface-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--color-text-muted);
+  padding: var(--spacing-8) var(--spacing-4);
+}
+
+.fade-in {
+  animation: fadeUp 360ms ease;
+}
+
+.slide-in {
+  animation: slideUp 360ms ease;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .page-shell {
+    padding: var(--spacing-4);
+  }
+}

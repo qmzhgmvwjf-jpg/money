@@ -1,42 +1,39 @@
-import React, { useEffect, useState } from "react";
-import API from "../../api";
+import React, { useCallback, useState } from "react";
+import Card from "../../components/ui/Card";
+import Button from "../../components/ui/Button";
+import Input from "../../components/ui/Input";
+import Badge from "../../components/ui/Badge";
+import { noticeService } from "../../services/noticeService";
+import { usePolling } from "../../hooks/usePolling";
 
 function NoticesTab() {
   const [notices, setNotices] = useState([]);
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({
     title: "",
     content: "",
     target: "all",
   });
-  const [editingId, setEditingId] = useState(null);
 
-  const fetchNotices = async () => {
-    const res = await API.get("/notices");
-    setNotices(res.data);
-  };
-
-  useEffect(() => {
-    fetchNotices();
+  const fetchNotices = useCallback(async () => {
+    const data = await noticeService.getNotices();
+    setNotices(data);
   }, []);
 
-  const saveNotice = async () => {
+  usePolling(fetchNotices, 6000);
+
+  const save = async () => {
     if (!form.title || !form.content) {
       alert("제목과 내용을 입력하세요.");
       return;
     }
-
     if (editingId) {
-      await API.put(`/notices/${editingId}`, form);
+      await noticeService.updateNotice(editingId, form);
     } else {
-      await API.post("/notices", form);
+      await noticeService.createNotice(form);
     }
-
     setEditingId(null);
-    setForm({
-      title: "",
-      content: "",
-      target: "all",
-    });
+    setForm({ title: "", content: "", target: "all" });
     fetchNotices();
   };
 
@@ -49,55 +46,56 @@ function NoticesTab() {
     });
   };
 
-  const deleteNotice = async (id) => {
+  const remove = async (id) => {
     if (!window.confirm("공지를 삭제할까요?")) return;
-    await API.delete(`/notices/${id}`);
+    await noticeService.deleteNotice(id);
     fetchNotices();
   };
 
   return (
-    <>
-      <h3>📢 공지사항</h3>
-
-      <div className="card">
-        <h4>{editingId ? "공지 수정" : "공지 작성"}</h4>
-        <input
-          placeholder="제목"
-          value={form.title}
-          onChange={(e) => setForm({ ...form, title: e.target.value })}
-        />
-        <textarea
-          className="admin-textarea"
-          placeholder="내용"
-          value={form.content}
-          onChange={(e) => setForm({ ...form, content: e.target.value })}
-        />
-        <select
-          value={form.target}
-          onChange={(e) => setForm({ ...form, target: e.target.value })}
-        >
-          <option value="all">전체</option>
-          <option value="store">가게</option>
-          <option value="driver">기사</option>
-        </select>
-        <button className="primary full-width-btn" onClick={saveNotice}>
-          {editingId ? "공지 수정" : "공지 등록"}
-        </button>
-      </div>
+    <div className="page-stack">
+      <Card>
+        <div className="section-heading">
+          <div>
+            <h3>{editingId ? "공지 수정" : "공지 작성"}</h3>
+            <p>가게와 기사에게 자연스럽게 전달되는 메시지 시스템</p>
+          </div>
+        </div>
+        <div className="auth-form" style={{ marginTop: 16 }}>
+          <Input label="제목" value={form.title} onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))} />
+          <Input label="내용" as="textarea" rows={5} value={form.content} onChange={(event) => setForm((prev) => ({ ...prev, content: event.target.value }))} />
+          <Input label="대상" as="select" value={form.target} onChange={(event) => setForm((prev) => ({ ...prev, target: event.target.value }))}>
+            <option value="all">전체</option>
+            <option value="store">가게</option>
+            <option value="driver">기사</option>
+          </Input>
+          <Button onClick={save}>{editingId ? "공지 수정" : "공지 저장"}</Button>
+        </div>
+      </Card>
 
       {notices.map((notice) => (
-        <div key={notice._id} className="card">
-          <p><b>{notice.title}</b></p>
-          <p>대상: {notice.target}</p>
-          <p>{notice.content}</p>
-          <p>읽음 수: {notice.read_by?.length || 0}</p>
-          <button onClick={() => startEdit(notice)}>수정</button>
-          <button className="danger" onClick={() => deleteNotice(notice._id)}>
-            삭제
-          </button>
-        </div>
+        <Card key={notice._id}>
+          <div className="section-heading">
+            <div>
+              <h3>{notice.title}</h3>
+              <p>{notice.content}</p>
+            </div>
+            <div className="status-row">
+              <Badge tone="primary">{notice.target}</Badge>
+              <Badge tone="secondary">읽음 {notice.read_by?.length || 0}</Badge>
+            </div>
+          </div>
+          <div className="list-actions" style={{ marginTop: 16 }}>
+            <Button variant="secondary" onClick={() => startEdit(notice)}>
+              수정
+            </Button>
+            <Button variant="danger" onClick={() => remove(notice._id)}>
+              삭제
+            </Button>
+          </div>
+        </Card>
       ))}
-    </>
+    </div>
   );
 }
 

@@ -1,242 +1,209 @@
-import React, { useCallback, useEffect, useState } from "react";
-import API from "../api";
+import React, { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import AppShell from "../layouts/AppShell";
+import Header from "../components/common/Header";
+import Card from "../components/ui/Card";
+import Button from "../components/ui/Button";
+import Badge from "../components/ui/Badge";
+import BottomNavigation from "../components/navigation/BottomNavigation";
+import { orderService } from "../services/orderService";
+import { noticeService } from "../services/noticeService";
+import { formatCurrency, formatDateTime } from "../utils/format";
+import { usePolling } from "../hooks/usePolling";
 
-const storeTabs = [
-  { key: "orders", label: "주문 관리" },
-  { key: "messages", label: "메시지함" },
-  { key: "stats", label: "매출 통계" },
+const tabs = [
+  { key: "orders", label: "주문", icon: "📦" },
+  { key: "messages", label: "메시지", icon: "💬" },
+  { key: "stats", label: "통계", icon: "📈" },
 ];
 
-const orderFilters = [
+const filters = [
   { value: "all", label: "전체" },
   { value: "in_progress", label: "진행중" },
   { value: "completed", label: "완료" },
   { value: "cancelled", label: "취소" },
 ];
 
-function formatDate(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("ko-KR");
-}
-
 function StorePage() {
   const navigate = useNavigate();
   const username = localStorage.getItem("username");
   const storeName = localStorage.getItem("storeName");
-
   const [tab, setTab] = useState("orders");
   const [filter, setFilter] = useState("all");
   const [orders, setOrders] = useState([]);
-  const [notices, setNotices] = useState([]);
   const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [notices, setNotices] = useState([]);
 
-  const logout = useCallback(() => {
+  const logout = () => {
     localStorage.clear();
     navigate("/");
-  }, [navigate]);
+  };
 
   const fetchOrders = useCallback(async () => {
-    try {
-      const res = await API.get(`/store/orders?filter=${filter}`);
-      setOrders(res.data);
-    } catch (err) {
-      if (err.response?.status === 401 || err.response?.status === 403) {
-        logout();
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [filter, logout]);
-
-  const fetchNotices = useCallback(async () => {
-    const res = await API.get("/notices");
-    setNotices(res.data);
-  }, []);
+    const data = await orderService.getStoreOrders(filter);
+    setOrders(data);
+  }, [filter]);
 
   const fetchStats = useCallback(async () => {
-    const res = await API.get("/store/stats");
-    setStats(res.data);
+    const data = await orderService.getStoreStats();
+    setStats(data);
   }, []);
 
-  useEffect(() => {
-    if (localStorage.getItem("role") !== "store") {
-      navigate("/");
-      return;
-    }
+  const fetchNotices = useCallback(async () => {
+    const data = await noticeService.getNotices();
+    setNotices(data);
+  }, []);
 
-    fetchOrders();
-    fetchNotices();
-    fetchStats();
+  usePolling(fetchOrders, 3000);
+  usePolling(fetchStats, 5000);
+  usePolling(fetchNotices, 7000);
 
-    const interval = setInterval(() => {
-      fetchOrders();
-      fetchStats();
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [navigate, fetchOrders, fetchNotices, fetchStats]);
-
-  const acceptOrder = async (id) => {
-    await API.post(`/orders/${id}/store_accept`);
+  const orderAction = async (type, id) => {
+    if (type === "accept") await orderService.storeAccept(id);
+    if (type === "reject") await orderService.storeReject(id);
+    if (type === "dispatch") await orderService.requestDispatch(id);
     fetchOrders();
     fetchStats();
   };
-
-  const rejectOrder = async (id) => {
-    await API.post(`/orders/${id}/reject`);
-    fetchOrders();
-    fetchStats();
-  };
-
-  const dispatchOrder = async (id) => {
-    await API.post(`/orders/${id}/dispatch`);
-    fetchOrders();
-  };
-
-  const markNoticeAsRead = async (id) => {
-    await API.put(`/notices/${id}/read`);
-    fetchNotices();
-  };
-
-  if (loading) return <h2>로딩중...</h2>;
 
   return (
-    <div className="container admin-container">
-      <div className="header">
-        <h2>🏪 {storeName}</h2>
-        <button onClick={logout}>로그아웃</button>
-      </div>
-
-      <div className="admin-tabs">
-        {storeTabs.map((item) => (
-          <button
-            key={item.key}
-            className={tab === item.key ? "primary" : ""}
-            onClick={() => setTab(item.key)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+    <AppShell mobile>
+      <Header
+        title={storeName || "가게 운영"}
+        subtitle="주문 흐름과 메시지, 매출 통계를 한 화면에서 관리합니다."
+        actionLabel="로그아웃"
+        onAction={logout}
+      />
 
       {tab === "orders" && (
         <>
-          <div className="card filter-row">
-            {orderFilters.map((item) => (
-              <button
-                key={item.value}
-                className={filter === item.value ? "primary" : ""}
-                onClick={() => setFilter(item.value)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+          <Card>
+            <div className="chip-row">
+              {filters.map((item) => (
+                <Button
+                  key={item.value}
+                  variant={filter === item.value ? "primary" : "secondary"}
+                  onClick={() => setFilter(item.value)}
+                >
+                  {item.label}
+                </Button>
+              ))}
+            </div>
+          </Card>
 
           {orders.map((order) => (
-            <div key={order._id} className="card">
-              <div className="admin-grid">
+            <Card key={order._id}>
+              <div className="section-heading">
                 <div>
-                  <p><b>주문번호</b> {order.order_id}</p>
-                  <p><b>시간</b> {formatDate(order.created_at)}</p>
-                  <p><b>고객명</b> {order.customer_name || "-"}</p>
-                  <p><b>전화번호</b> {order.phone || "-"}</p>
+                  <h3>{order.order_id}</h3>
+                  <p>{formatDateTime(order.created_at)}</p>
+                </div>
+                <Badge status={order.status}>{order.status}</Badge>
+              </div>
+              <div className="two-column-grid" style={{ marginTop: 16 }}>
+                <div>
+                  <p><strong>고객명</strong> {order.customer_name || "-"}</p>
+                  <p><strong>전화번호</strong> {order.phone || "-"}</p>
+                  <p><strong>주소</strong> {order.address || "-"}</p>
                 </div>
                 <div>
-                  <p><b>주소</b> {order.address || "-"}</p>
-                  <p><b>금액</b> {order.total_price?.toLocaleString()}원</p>
-                  <p><b>상태</b> {order.status}</p>
-                  <p><b>기사</b> {order.driver_id || "-"}</p>
+                  <p><strong>총 금액</strong> {formatCurrency(order.total_price)}</p>
+                  <p><strong>기사</strong> {order.driver_id || "-"}</p>
                 </div>
               </div>
-
-              <div className="mini-card">
-                <b>주문메뉴</b>
+              <Card className="mini-card" style={{ marginTop: 16 }}>
+                <strong>주문 메뉴</strong>
                 {order.items?.map((item, index) => (
                   <div key={index}>
-                    {item.name} - {item.price}원
+                    {item.name} - {formatCurrency(item.price)}
                   </div>
                 ))}
+              </Card>
+              <div className="list-actions" style={{ marginTop: 16 }}>
+                {order.status === "pending" && (
+                  <>
+                    <Button onClick={() => orderAction("accept", order._id)}>주문 수락</Button>
+                    <Button variant="danger" onClick={() => orderAction("reject", order._id)}>
+                      주문 거절
+                    </Button>
+                  </>
+                )}
+                {order.status === "accepted" && (
+                  <Button onClick={() => orderAction("dispatch", order._id)}>배차 요청</Button>
+                )}
               </div>
-
-              {order.status === "pending" && (
-                <>
-                  <button onClick={() => acceptOrder(order._id)}>주문 수락</button>
-                  <button className="danger" onClick={() => rejectOrder(order._id)}>
-                    주문 거절
-                  </button>
-                </>
-              )}
-
-              {order.status === "accepted" && (
-                <button onClick={() => dispatchOrder(order._id)}>배차 요청</button>
-              )}
-            </div>
+            </Card>
           ))}
         </>
       )}
 
       {tab === "messages" && (
-        <div className="card">
-          <h4>메시지함</h4>
-          {notices.length === 0 && <p>표시할 공지가 없습니다.</p>}
+        <Card>
+          <h3>메시지함</h3>
           {notices.map((notice) => {
             const isRead = notice.read_by?.includes(username);
             return (
-              <div key={notice._id} className="mini-card">
-                <p><b>{notice.title}</b></p>
-                <p>{notice.content}</p>
-                <p>대상: {notice.target}</p>
-                <p>읽음 여부: {isRead ? "읽음" : "안읽음"}</p>
-                <p>작성일: {formatDate(notice.created_at)}</p>
+              <Card key={notice._id} className="mini-card">
+                <div className="section-heading">
+                  <div>
+                    <strong>{notice.title}</strong>
+                    <p>{notice.content}</p>
+                  </div>
+                  <Badge tone={isRead ? "secondary" : "primary"}>
+                    {isRead ? "읽음" : "새 공지"}
+                  </Badge>
+                </div>
                 {!isRead && (
-                  <button onClick={() => markNoticeAsRead(notice._id)}>
+                  <Button
+                    variant="secondary"
+                    onClick={async () => {
+                      await noticeService.readNotice(notice._id);
+                      fetchNotices();
+                    }}
+                  >
                     읽음 처리
-                  </button>
+                  </Button>
                 )}
-              </div>
+              </Card>
             );
           })}
-        </div>
+        </Card>
       )}
 
       {tab === "stats" && (
         <>
-          <div className="stats-grid">
-            <div className="card">
-              <h4>오늘 매출</h4>
-              <p>{stats?.todaySales?.toLocaleString() || 0}원</p>
-            </div>
-            <div className="card">
-              <h4>누적 매출</h4>
-              <p>{stats?.totalSales?.toLocaleString() || 0}원</p>
-            </div>
-            <div className="card">
-              <h4>전체 주문</h4>
-              <p>{stats?.totalOrders || 0}건</p>
-            </div>
-            <div className="card">
-              <h4>취소 주문</h4>
-              <p>{stats?.cancelledOrders || 0}건</p>
-            </div>
+          <div className="dashboard-grid">
+            <Card className="metric-card">
+              <h3>{formatCurrency(stats?.todaySales || 0)}</h3>
+              <p>오늘 매출</p>
+            </Card>
+            <Card className="metric-card">
+              <h3>{formatCurrency(stats?.totalSales || 0)}</h3>
+              <p>누적 매출</p>
+            </Card>
+            <Card className="metric-card">
+              <h3>{stats?.totalOrders || 0}건</h3>
+              <p>전체 주문</p>
+            </Card>
+            <Card className="metric-card">
+              <h3>{stats?.cancelledOrders || 0}건</h3>
+              <p>취소 주문</p>
+            </Card>
           </div>
 
-          <div className="card">
-            <h4>최근 주문 흐름</h4>
+          <Card>
+            <h3>최근 주문 흐름</h3>
             {stats?.orders?.map((order) => (
-              <div key={order._id} className="mini-card">
-                <p>{order.order_id}</p>
-                <p>{order.customer_name} / {order.phone}</p>
-                <p>{order.total_price?.toLocaleString()}원</p>
-                <p>{order.status}</p>
-              </div>
+              <Card key={order._id} className="mini-card">
+                {order.order_id} · {order.customer_name} · {formatCurrency(order.total_price)} · {order.status}
+              </Card>
             ))}
-          </div>
+          </Card>
         </>
       )}
-    </div>
+
+      <BottomNavigation items={tabs} activeKey={tab} onChange={setTab} />
+    </AppShell>
   );
 }
 

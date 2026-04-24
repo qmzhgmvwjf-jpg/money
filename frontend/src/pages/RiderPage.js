@@ -1,23 +1,27 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import API from "../api";
+import React, { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import AppShell from "../layouts/AppShell";
+import Header from "../components/common/Header";
+import Card from "../components/ui/Card";
+import Button from "../components/ui/Button";
+import Input from "../components/ui/Input";
+import Badge from "../components/ui/Badge";
+import BottomNavigation from "../components/navigation/BottomNavigation";
+import { orderService } from "../services/orderService";
+import { noticeService } from "../services/noticeService";
+import { formatCurrency, formatDateTime, groupByDate } from "../utils/format";
+import { usePolling } from "../hooks/usePolling";
 
-const riderTabs = [
-  { key: "home", label: "홈" },
-  { key: "history", label: "배달 내역" },
-  { key: "earnings", label: "수익 조회" },
-  { key: "messages", label: "메시지함" },
+const tabs = [
+  { key: "home", label: "홈", icon: "🏍" },
+  { key: "history", label: "내역", icon: "🧾" },
+  { key: "earnings", label: "수익", icon: "💸" },
+  { key: "messages", label: "메시지", icon: "💬" },
 ];
-
-function formatDate(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("ko-KR");
-}
 
 function RiderPage() {
   const navigate = useNavigate();
   const username = localStorage.getItem("username");
-
   const [tab, setTab] = useState("home");
   const [dashboard, setDashboard] = useState(null);
   const [availableOrders, setAvailableOrders] = useState([]);
@@ -26,278 +30,231 @@ function RiderPage() {
   const [earningsPeriod, setEarningsPeriod] = useState("day");
   const [earnings, setEarnings] = useState(null);
   const [notices, setNotices] = useState([]);
-  const [loading, setLoading] = useState(true);
 
-  const logout = useCallback(() => {
+  const logout = () => {
     localStorage.clear();
     navigate("/");
-  }, [navigate]);
+  };
 
   const fetchDashboard = useCallback(async () => {
-    try {
-      const [dashboardRes, ordersRes] = await Promise.all([
-        API.get("/driver/dashboard"),
-        API.get("/driver/available-orders"),
-      ]);
-
-      setDashboard(dashboardRes.data);
-      setAvailableOrders(ordersRes.data);
-    } catch (err) {
-      if (err.response?.status === 401 || err.response?.status === 403) {
-        logout();
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [logout]);
+    const [dashboardData, orderData] = await Promise.all([
+      orderService.getDriverDashboard(),
+      orderService.getDriverAvailableOrders(),
+    ]);
+    setDashboard(dashboardData);
+    setAvailableOrders(orderData);
+  }, []);
 
   const fetchHistory = useCallback(async () => {
-    const res = await API.get(`/driver/history?period=${historyPeriod}`);
-    setHistoryOrders(res.data);
+    const data = await orderService.getDriverHistory(historyPeriod);
+    setHistoryOrders(data);
   }, [historyPeriod]);
 
   const fetchEarnings = useCallback(async () => {
-    const res = await API.get(`/driver/earnings?period=${earningsPeriod}`);
-    setEarnings(res.data);
+    const data = await orderService.getDriverEarnings(earningsPeriod);
+    setEarnings(data);
   }, [earningsPeriod]);
 
   const fetchNotices = useCallback(async () => {
-    const res = await API.get("/notices");
-    setNotices(res.data);
+    const data = await noticeService.getNotices();
+    setNotices(data);
   }, []);
 
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    const role = localStorage.getItem("role");
-
-    if (!token || role !== "driver") {
-      navigate("/");
-      return;
-    }
-
-    fetchDashboard();
-    fetchNotices();
-
-    const interval = setInterval(fetchDashboard, 3000);
-    return () => clearInterval(interval);
-  }, [navigate, fetchDashboard, fetchNotices]);
-
-  useEffect(() => {
-    if (tab === "history") fetchHistory();
-  }, [tab, fetchHistory]);
-
-  useEffect(() => {
-    if (tab === "earnings") fetchEarnings();
-  }, [tab, fetchEarnings]);
+  usePolling(fetchDashboard, 3000);
+  usePolling(fetchNotices, 7000);
+  usePolling(fetchHistory, 7000, tab === "history");
+  usePolling(fetchEarnings, 7000, tab === "earnings");
 
   const toggleOnline = async () => {
-    const nextStatus =
-      dashboard?.onlineStatus === "online" ? "offline" : "online";
-    await API.put("/driver/online-status", { onlineStatus: nextStatus });
+    const nextStatus = dashboard?.onlineStatus === "online" ? "offline" : "online";
+    await orderService.updateDriverOnlineStatus({ onlineStatus: nextStatus });
     fetchDashboard();
   };
 
-  const accept = async (id) => {
-    await API.post(`/orders/${id}/accept`);
-    fetchDashboard();
-  };
-
-  const reject = async (id) => {
-    await API.post(`/orders/${id}/driver-reject`);
-    fetchDashboard();
-  };
-
-  const start = async (id) => {
-    await API.post(`/orders/${id}/start`);
-    fetchDashboard();
-  };
-
-  const complete = async (id) => {
-    await API.post(`/orders/${id}/complete`);
+  const takeAction = async (type, id) => {
+    if (type === "accept") await orderService.driverAccept(id);
+    if (type === "reject") await orderService.driverReject(id);
+    if (type === "start") await orderService.driverStart(id);
+    if (type === "complete") await orderService.driverComplete(id);
     fetchDashboard();
     fetchHistory();
     fetchEarnings();
   };
 
-  const markNoticeAsRead = async (id) => {
-    await API.put(`/notices/${id}/read`);
-    fetchNotices();
-  };
-
-  const groupedHistory = useMemo(() => {
-    return historyOrders.reduce((acc, order) => {
-      const dateKey = order.created_at
-        ? new Date(order.created_at).toLocaleDateString("ko-KR")
-        : "날짜 없음";
-      if (!acc[dateKey]) acc[dateKey] = [];
-      acc[dateKey].push(order);
-      return acc;
-    }, {});
-  }, [historyOrders]);
-
-  if (loading) return <h2 style={{ textAlign: "center" }}>로딩중...</h2>;
+  const groupedHistory = useMemo(() => groupByDate(historyOrders), [historyOrders]);
 
   return (
-    <div className="container admin-container">
-      <div className="header">
-        <h2>🚴 기사 앱</h2>
-        <button onClick={logout}>로그아웃</button>
-      </div>
-
-      <div className="admin-tabs">
-        {riderTabs.map((item) => (
-          <button
-            key={item.key}
-            className={tab === item.key ? "primary" : ""}
-            onClick={() => setTab(item.key)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+    <AppShell mobile>
+      <Header
+        title="라이더 센터"
+        subtitle="오늘 흐름, 수익, 메시지를 한 손 안에서 확인하세요"
+        actionLabel="로그아웃"
+        onAction={logout}
+      />
 
       {tab === "home" && (
         <>
-          <div className="stats-grid">
-            <div className="card">
-              <h4>온라인 상태</h4>
-              <p>{dashboard?.onlineStatus === "online" ? "온라인" : "오프라인"}</p>
-              <button onClick={toggleOnline}>
-                {dashboard?.onlineStatus === "online" ? "오프라인 전환" : "온라인 전환"}
-              </button>
-            </div>
-            <div className="card">
-              <h4>오늘 배달</h4>
-              <p>{dashboard?.todayDeliveries || 0}건</p>
-            </div>
-            <div className="card">
-              <h4>오늘 수익</h4>
-              <p>{dashboard?.todayEarnings?.toLocaleString() || 0}원</p>
-            </div>
-            <div className="card">
-              <h4>현재 상태</h4>
-              <p>{dashboard?.currentStatus || "대기"}</p>
-            </div>
+          <div className="dashboard-grid">
+            <Card className="metric-card">
+              <h3>{dashboard?.todayDeliveries || 0}</h3>
+              <p>오늘 배달 건수</p>
+            </Card>
+            <Card className="metric-card">
+              <h3>{formatCurrency(dashboard?.todayEarnings || 0)}</h3>
+              <p>오늘 수익</p>
+            </Card>
+            <Card className="metric-card">
+              <h3>{dashboard?.currentStatus || "대기"}</h3>
+              <p>현재 상태</p>
+            </Card>
+            <Card className="metric-card">
+              <h3>{dashboard?.onlineStatus === "online" ? "온라인" : "오프라인"}</h3>
+              <p>배차 수신 상태</p>
+            </Card>
           </div>
 
-          <div className="card">
-            <h4>현재 배달</h4>
-            {dashboard?.currentOrder ? (
-              <>
-                <p>{dashboard.currentOrder.order_id}</p>
-                <p>{dashboard.currentOrder.store}</p>
-                <p>{dashboard.currentOrder.customer_name}</p>
-                <p>{dashboard.currentOrder.phone}</p>
-                <p>{dashboard.currentOrder.address}</p>
-                <p>{dashboard.currentOrder.total_price?.toLocaleString()}원</p>
-                <p>{dashboard.currentOrder.status}</p>
-                {dashboard.currentOrder.status === "assigned" && (
-                  <button onClick={() => start(dashboard.currentOrder._id)}>배달 시작</button>
-                )}
-                {dashboard.currentOrder.status === "delivering" && (
-                  <button onClick={() => complete(dashboard.currentOrder._id)}>배달 완료</button>
-                )}
-              </>
-            ) : (
-              <p>진행 중인 배달이 없습니다.</p>
-            )}
-          </div>
-
-          <div className="card">
-            <h4>배차 요청 리스트</h4>
-            {availableOrders.length === 0 && <p>현재 수락 가능한 배차가 없습니다.</p>}
-            {availableOrders.map((order) => (
-              <div key={order._id} className="mini-card">
-                <p><b>{order.order_id}</b></p>
-                <p>{order.store}</p>
-                <p>{order.customer_name} / {order.phone}</p>
-                <p>{order.address}</p>
-                <p>{order.total_price?.toLocaleString()}원</p>
-                <button onClick={() => accept(order._id)}>수락</button>
-                <button onClick={() => reject(order._id)}>거절</button>
+          <Card>
+            <div className="section-heading">
+              <div>
+                <h3>근무 상태</h3>
+                <p>배차를 받기 전 온라인 상태를 먼저 전환하세요</p>
               </div>
+              <Button variant={dashboard?.onlineStatus === "online" ? "danger" : "primary"} onClick={toggleOnline}>
+                {dashboard?.onlineStatus === "online" ? "오프라인 전환" : "온라인 전환"}
+              </Button>
+            </div>
+          </Card>
+
+          <Card>
+            <h3>현재 배달</h3>
+            {dashboard?.currentOrder ? (
+              <div className="panel-list">
+                <div>{dashboard.currentOrder.order_id}</div>
+                <div>{dashboard.currentOrder.store}</div>
+                <div>{dashboard.currentOrder.customer_name} · {dashboard.currentOrder.phone}</div>
+                <div>{dashboard.currentOrder.address}</div>
+                <Badge status={dashboard.currentOrder.status}>{dashboard.currentOrder.status}</Badge>
+                <div className="list-actions">
+                  {dashboard.currentOrder.status === "assigned" && (
+                    <Button onClick={() => takeAction("start", dashboard.currentOrder._id)}>배달 시작</Button>
+                  )}
+                  {dashboard.currentOrder.status === "delivering" && (
+                    <Button onClick={() => takeAction("complete", dashboard.currentOrder._id)}>배달 완료</Button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="empty-state">진행 중인 배달이 없습니다.</div>
+            )}
+          </Card>
+
+          <Card>
+            <h3>배차 요청</h3>
+            {availableOrders.map((order) => (
+              <Card key={order._id} className="mini-card">
+                <div>{order.order_id}</div>
+                <div>{order.store}</div>
+                <div>{order.address}</div>
+                <div>{formatCurrency(order.total_price)}</div>
+                <div className="list-actions">
+                  <Button onClick={() => takeAction("accept", order._id)}>수락</Button>
+                  <Button variant="secondary" onClick={() => takeAction("reject", order._id)}>
+                    거절
+                  </Button>
+                </div>
+              </Card>
             ))}
-          </div>
+            {availableOrders.length === 0 && <div className="empty-state">현재 수락 가능한 배차가 없습니다.</div>}
+          </Card>
         </>
       )}
 
       {tab === "history" && (
-        <div className="card">
-          <div className="header">
-            <h4>배달 내역</h4>
-            <select value={historyPeriod} onChange={(e) => setHistoryPeriod(e.target.value)}>
+        <Card>
+          <div className="section-heading">
+            <h3>배달 내역</h3>
+            <Input as="select" value={historyPeriod} onChange={(event) => setHistoryPeriod(event.target.value)}>
               <option value="day">1일</option>
               <option value="week">1주</option>
               <option value="month">1개월</option>
-            </select>
+            </Input>
           </div>
-
-          {Object.entries(groupedHistory).map(([date, orders]) => (
-            <div key={date} className="mini-card">
-              <b>{date}</b>
-              {orders.map((order) => (
-                <div key={order._id} className="mini-card">
-                  <p>{order.order_id}</p>
-                  <p>{order.store}</p>
-                  <p>수익: {order.driver_fee?.toLocaleString()}원</p>
-                  <p>완료: {formatDate(order.created_at)}</p>
+          {Object.entries(groupedHistory).map(([date, items]) => (
+            <Card key={date} className="mini-card">
+              <strong>{date}</strong>
+              {items.map((order) => (
+                <div key={order._id}>
+                  {order.order_id} · {order.store} · {formatCurrency(order.driver_fee)}
                 </div>
               ))}
-            </div>
+            </Card>
           ))}
-
-          {historyOrders.length === 0 && <p>표시할 배달 내역이 없습니다.</p>}
-        </div>
+        </Card>
       )}
 
       {tab === "earnings" && (
-        <div className="card">
-          <div className="header">
-            <h4>수익 조회</h4>
-            <select value={earningsPeriod} onChange={(e) => setEarningsPeriod(e.target.value)}>
+        <Card>
+          <div className="section-heading">
+            <h3>수익 조회</h3>
+            <Input as="select" value={earningsPeriod} onChange={(event) => setEarningsPeriod(event.target.value)}>
               <option value="day">일</option>
               <option value="week">주</option>
               <option value="month">월</option>
-            </select>
+            </Input>
           </div>
-          <p>총 수익: {earnings?.totalEarnings?.toLocaleString() || 0}원</p>
-          <p>총 배달 건수: {earnings?.totalDeliveries || 0}건</p>
-
+          <div className="dashboard-grid" style={{ marginTop: 16 }}>
+            <Card className="mini-card metric-card">
+              <h3>{formatCurrency(earnings?.totalEarnings || 0)}</h3>
+              <p>총 수익</p>
+            </Card>
+            <Card className="mini-card metric-card">
+              <h3>{earnings?.totalDeliveries || 0}건</h3>
+              <p>완료 배달</p>
+            </Card>
+          </div>
           {earnings?.orders?.map((order) => (
-            <div key={order._id} className="mini-card">
-              <p>{order.order_id}</p>
-              <p>{order.store}</p>
-              <p>수익 {order.driver_fee?.toLocaleString()}원</p>
-              <p>{formatDate(order.created_at)}</p>
-            </div>
+            <Card key={order._id} className="mini-card">
+              {order.order_id} · {formatDateTime(order.created_at)} · {formatCurrency(order.driver_fee)}
+            </Card>
           ))}
-        </div>
+        </Card>
       )}
 
       {tab === "messages" && (
-        <div className="card">
-          <h4>메시지함</h4>
-          {notices.length === 0 && <p>표시할 공지가 없습니다.</p>}
+        <Card>
+          <h3>메시지함</h3>
           {notices.map((notice) => {
             const isRead = notice.read_by?.includes(username);
             return (
-              <div key={notice._id} className="mini-card">
-                <p><b>{notice.title}</b></p>
-                <p>{notice.content}</p>
-                <p>대상: {notice.target}</p>
-                <p>작성일: {formatDate(notice.created_at)}</p>
-                <p>읽음 여부: {isRead ? "읽음" : "안읽음"}</p>
+              <Card key={notice._id} className="mini-card">
+                <div className="section-heading">
+                  <div>
+                    <strong>{notice.title}</strong>
+                    <p>{notice.content}</p>
+                  </div>
+                  <Badge tone={isRead ? "secondary" : "primary"}>
+                    {isRead ? "읽음" : "새 공지"}
+                  </Badge>
+                </div>
                 {!isRead && (
-                  <button onClick={() => markNoticeAsRead(notice._id)}>
+                  <Button
+                    variant="secondary"
+                    onClick={async () => {
+                      await noticeService.readNotice(notice._id);
+                      fetchNotices();
+                    }}
+                  >
                     읽음 처리
-                  </button>
+                  </Button>
                 )}
-              </div>
+              </Card>
             );
           })}
-        </div>
+        </Card>
       )}
-    </div>
+
+      <BottomNavigation items={tabs} activeKey={tab} onChange={setTab} />
+    </AppShell>
   );
 }
 

@@ -1,117 +1,79 @@
 import React, { useState } from "react";
-import API from "../api";
 import { useNavigate } from "react-router-dom";
-import "./login.css";
+import AuthLayout from "../layouts/AuthLayout";
+import Card from "../components/ui/Card";
+import Input from "../components/ui/Input";
+import Button from "../components/ui/Button";
+import { authService } from "../services/authService";
 
 function LoginPage() {
+  const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const navigate = useNavigate();
-
   const login = async () => {
     if (!username || !password) {
-      alert("입력하세요");
+      alert("아이디와 비밀번호를 입력하세요.");
       return;
     }
 
     try {
       setLoading(true);
+      const data = await authService.login({ username, password });
 
-      const res = await API.post("/login", {
-        username,
-        password
-      });
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("role", data.role);
+      localStorage.setItem("username", data.username || username);
 
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("role", res.data.role);
-      localStorage.setItem("username", res.data.username || username);
+      if (data.phone) localStorage.setItem("phone", data.phone);
+      if (data.address) localStorage.setItem("address", data.address);
+      if (data.storeName) localStorage.setItem("storeName", data.storeName);
+      if (data.onlineStatus) localStorage.setItem("onlineStatus", data.onlineStatus);
 
-      if (res.data.phone) {
-        localStorage.setItem("phone", res.data.phone);
-      }
-      if (res.data.address) {
-        localStorage.setItem("address", res.data.address);
-      }
-      if (res.data.onlineStatus) {
-        localStorage.setItem("onlineStatus", res.data.onlineStatus);
-      }
-
-      if (res.data.role === "admin") navigate("/admin");
-      else if (res.data.role === "driver") navigate("/rider");
-      else if (res.data.role === "customer") navigate("/customer");
-      else if (res.data.role === "store") {
-        localStorage.setItem("storeName", res.data.storeName || "");
-        navigate("/store");
-      }
-
-    } catch (err) {
-      console.log(err);
-      alert(err.response?.data?.detail || "로그인 실패");
+      if (data.role === "admin") navigate("/admin");
+      else if (data.role === "driver") navigate("/rider");
+      else if (data.role === "store") navigate("/store");
+      else navigate("/customer");
+    } catch (error) {
+      alert(error.response?.data?.detail || "로그인 실패");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="login-wrapper">
+    <AuthLayout>
+      <Card className="hero-card">
+        <div className="auth-brand">
+          <div className="auth-brand__logo">D</div>
+          <h1>Delivery OS</h1>
+          <p>배달 운영과 주문 경험을 하나의 흐름으로 연결하는 프리미엄 플랫폼</p>
+        </div>
 
-      {/* 🔥 배경 그라데이션 */}
-      <div className="bg"></div>
-
-      {/* 🔥 글로우 효과 */}
-      <div className="glow"></div>
-
-      {/* 🔥 카드 */}
-      <div className="login-card">
-
-        <div className="logo">🚀</div>
-
-        <h1>Delivery OS</h1>
-        <p className="subtitle">
-          빠르고 정확한 배달 플랫폼
-        </p>
-
-        <div className="input-group">
-          <input
-            placeholder="아이디"
+        <div className="auth-form">
+          <Input
+            label="아이디"
+            placeholder="아이디를 입력하세요"
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={(event) => setUsername(event.target.value)}
           />
-        </div>
-
-        <div className="input-group">
-          <input
+          <Input
+            label="비밀번호"
             type="password"
-            placeholder="비밀번호"
+            placeholder="비밀번호를 입력하세요"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(event) => setPassword(event.target.value)}
           />
+          <Button block loading={loading} onClick={login}>
+            로그인
+          </Button>
+          <Button block variant="secondary" onClick={() => navigate("/register")}>
+            회원가입
+          </Button>
         </div>
-
-        <button
-          className="login-btn"
-          onClick={login}
-          disabled={loading}
-        >
-          {loading ? "접속 중..." : "로그인"}
-        </button>
-
-        <button
-          className="login-btn secondary-btn"
-          onClick={() => navigate("/register")}
-          type="button"
-        >
-          회원가입
-        </button>
-
-        <p className="footer">
-          © 2026 Delivery Platform
-        </p>
-
-      </div>
-    </div>
+      </Card>
+    </AuthLayout>
   );
 }
 

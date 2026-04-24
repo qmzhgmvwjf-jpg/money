@@ -1,131 +1,76 @@
-import React, { useEffect, useState } from "react";
-import API from "../api";
+import React, { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import AppShell from "../layouts/AppShell";
+import Header from "../components/common/Header";
+import Card from "../components/ui/Card";
+import Button from "../components/ui/Button";
+import Badge from "../components/ui/Badge";
+import { orderService } from "../services/orderService";
+import { usePolling } from "../hooks/usePolling";
 
-const steps = [
-  "pending",
-  "accepted",
-  "dispatch_ready",
-  "assigned",
-  "delivering",
-  "completed"
-];
-
-const labels = {
-  pending: "주문 완료",
-  accepted: "가게 수락",
-  dispatch_ready: "배차 중",
-  assigned: "기사 배정",
-  delivering: "배달 중",
-  completed: "배달 완료"
-};
+const steps = ["pending", "accepted", "dispatch_ready", "assigned", "delivering", "completed"];
 
 function TrackingPage() {
   const navigate = useNavigate();
-
   const [orders, setOrders] = useState([]);
 
-  // =========================
-  // 주문 가져오기
-  // =========================
-  const fetchOrders = async () => {
-    const res = await API.get("/my-orders");
-
-    const sorted = res.data.sort(
-      (a, b) => new Date(b.created_at) - new Date(a.created_at)
-    );
-
-    setOrders(sorted);
-  };
-
-  useEffect(() => {
-    fetchOrders();
-
-    const interval = setInterval(fetchOrders, 3000);
-    return () => clearInterval(interval);
+  const fetchOrders = useCallback(async () => {
+    const data = await orderService.getTrackingOrders();
+    setOrders(data);
   }, []);
 
-  // =========================
-  // 이동
-  // =========================
-  const goBack = () => {
-    navigate("/customer");
-  };
+  usePolling(fetchOrders, 3000);
 
-  const goHome = () => {
-    navigate("/customer");
-  };
-
-  // =========================
-  // UI
-  // =========================
   return (
-    <div className="container">
+    <AppShell mobile>
+      <Header
+        title="주문 추적"
+        subtitle="가장 최근 주문부터 실시간으로 보여드려요"
+        actionLabel="홈"
+        onAction={() => navigate("/customer")}
+      />
 
-      {/* 🔥 상단 바 */}
-      <div className="header">
-        <button onClick={goBack}>← 뒤로가기</button>
-        <h2>📦 주문 추적</h2>
-        <button onClick={goHome}>홈</button>
-      </div>
-
-      {/* =========================
-          주문 리스트
-      ========================= */}
       {orders.length === 0 && (
-        <div className="card">
-          주문 내역 없음
-        </div>
+        <Card>
+          <div className="empty-state">주문 내역이 없습니다.</div>
+        </Card>
       )}
 
-      {orders.map(o => {
-        const currentIndex = steps.indexOf(o.status);
+      {orders.map((order) => {
+        const currentIndex = steps.indexOf(order.status);
 
         return (
-          <div key={o._id} className="card">
-            <b>{o.store}</b>
-            <p>현재 상태: {labels[o.status]}</p>
+          <Card key={order._id}>
+            <div className="hero-card__title">
+              <div>
+                <h3>{order.store}</h3>
+                <p className="hero-card__subtitle">{order.order_id || order._id}</p>
+              </div>
+              <Badge status={order.status}>{order.status}</Badge>
+            </div>
 
-            {/* 🔥 상태 진행 UI */}
-            <div style={{ marginTop: 10 }}>
-              {steps.map((s, i) => (
+            <div className="timeline-list" style={{ marginTop: 18 }}>
+              {steps.map((step, index) => (
                 <div
-                  key={s}
-                  style={{
-                    padding: 6,
-                    borderRadius: 5,
-                    marginBottom: 4,
-                    backgroundColor:
-                      i < currentIndex
-                        ? "#d4edda"
-                        : i === currentIndex
-                        ? "#cce5ff"
-                        : "#f1f1f1",
-                    fontWeight: i === currentIndex ? "bold" : "normal"
-                  }}
+                  key={step}
+                  className={`timeline-step ${
+                    index < currentIndex ? "is-complete" : index === currentIndex ? "is-active" : ""
+                  }`}
                 >
-                  {i < currentIndex && "✔ "}
-                  {i === currentIndex && "👉 "}
-                  {i > currentIndex && "○ "}
-                  {labels[s]}
+                  {step}
                 </div>
               ))}
             </div>
 
-            {/* 🔥 완료 시 버튼 */}
-            {o.status === "completed" && (
-              <button
-                style={{ marginTop: 10 }}
-                onClick={() => navigate("/customer")}
-              >
-                다시 주문하기
-              </button>
+            {order.status === "completed" && (
+              <div className="list-actions" style={{ marginTop: 18 }}>
+                <Button onClick={() => navigate("/customer")}>다시 주문하기</Button>
+              </div>
             )}
-          </div>
+          </Card>
         );
       })}
-
-    </div>
+    </AppShell>
   );
 }
 

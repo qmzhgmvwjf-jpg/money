@@ -1,69 +1,89 @@
-import React, { useEffect, useState } from "react";
-import API from "../../api";
+import React, { useCallback, useState } from "react";
+import Card from "../../components/ui/Card";
+import Button from "../../components/ui/Button";
+import Badge from "../../components/ui/Badge";
+import { adminService } from "../../services/adminService";
+import { usePolling } from "../../hooks/usePolling";
+import { formatDateTime } from "../../utils/format";
 
 function RolesTab() {
   const [pendingUsers, setPendingUsers] = useState([]);
   const [logs, setLogs] = useState([]);
 
-  const fetchPendingUsers = async () => {
-    const res = await API.get("/pending-users");
-    setPendingUsers(res.data);
-  };
-
-  const fetchLogs = async () => {
-    const res = await API.get("/admin/activity-logs?limit=20");
-    setLogs(res.data);
-  };
-
-  useEffect(() => {
-    fetchPendingUsers();
-    fetchLogs();
+  const fetchPendingUsers = useCallback(async () => {
+    const data = await adminService.getPendingUsers();
+    setPendingUsers(data);
   }, []);
 
-  const approveUser = async (id) => {
-    await API.post(`/approve-user/${id}`);
+  const fetchLogs = useCallback(async () => {
+    const data = await adminService.getActivityLogs(20);
+    setLogs(data);
+  }, []);
+
+  usePolling(fetchPendingUsers, 5000);
+  usePolling(fetchLogs, 7000);
+
+  const approve = async (id) => {
+    await adminService.approveUser(id);
     fetchPendingUsers();
     fetchLogs();
   };
 
   return (
-    <>
-      <h3>🔐 권한 관리</h3>
+    <div className="page-stack">
+      <Card>
+        <div className="section-heading">
+          <div>
+            <h3>권한 체계</h3>
+            <p>admin / store / driver / customer 기반 접근 제어</p>
+          </div>
+          <Badge tone="primary">RBAC</Badge>
+        </div>
+        <div className="table-shell" style={{ marginTop: 16 }}>
+          <table>
+            <thead>
+              <tr>
+                <th>역할</th>
+                <th>설명</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>admin</td><td>운영 관리, 주문/가게/기사/고객/공지 전체 제어</td></tr>
+              <tr><td>store</td><td>가게 주문 처리, 배차 요청, 공지 확인</td></tr>
+              <tr><td>driver</td><td>온라인 전환, 배차 수락/거절, 수익 조회</td></tr>
+              <tr><td>customer</td><td>주문, 장바구니, 주문 추적</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
-      <div className="card">
-        <h4>역할 구조</h4>
-        <p>admin: 운영 전용 API 및 전체 관리 권한</p>
-        <p>store: 주문 수락, 배차 요청, 매출 조회, 가게 공지 수신</p>
-        <p>driver: 온라인 전환, 배차 수락/거절, 수익 조회, 기사 공지 수신</p>
-        <p>customer: 주문, 장바구니, 주문 추적</p>
-      </div>
-
-      <div className="card">
-        <h4>승인 대기 사용자</h4>
-        {pendingUsers.length === 0 && <p>승인 대기 사용자가 없습니다.</p>}
+      <Card>
+        <h3>승인 대기 사용자</h3>
+        {pendingUsers.length === 0 && <div className="empty-state">승인 대기 계정이 없습니다.</div>}
         {pendingUsers.map((user) => (
           <div key={user._id} className="mini-card">
-            <p><b>{user.username}</b> / {user.role}</p>
-            <p>{user.phone}</p>
-            {user.storeName && <p>{user.storeName}</p>}
-            <button className="primary" onClick={() => approveUser(user._id)}>
-              승인
-            </button>
+            <div className="section-heading">
+              <div>
+                <strong>{user.username}</strong>
+                <p>{user.role} · {user.phone}</p>
+              </div>
+              <Button onClick={() => approve(user._id)}>승인</Button>
+            </div>
           </div>
         ))}
-      </div>
+      </Card>
 
-      <div className="card">
-        <h4>최근 활동 로그</h4>
+      <Card>
+        <h3>최근 활동 로그</h3>
         {logs.map((log) => (
           <div key={log._id} className="mini-card">
-            <p><b>{log.actor}</b> ({log.role})</p>
-            <p>{log.message}</p>
-            <p>{new Date(log.created_at).toLocaleString("ko-KR")}</p>
+            <strong>{log.actor}</strong>
+            <div>{log.message}</div>
+            <small>{formatDateTime(log.created_at)}</small>
           </div>
         ))}
-      </div>
-    </>
+      </Card>
+    </div>
   );
 }
 

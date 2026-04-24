@@ -1,0 +1,25 @@
+import api from "./api";
+
+export const orderService = {
+  getMenus: () => api.get("/menus").then((res) => res.data),
+  createOrder: (payload) => api.post("/orders", payload).then((res) => res.data),
+  getMyOrders: () => api.get("/my-orders").then((res) => res.data),
+  getTrackingOrders: () => api.get("/my-orders").then((res) => res.data),
+  getAdminOrders: (filter) => api.get(`/admin/orders?filter=${filter}`).then((res) => res.data),
+  updateOrderStatus: (id, payload) => api.put(`/orders/${id}/status`, payload),
+  deleteOrder: (id) => api.delete(`/orders/${id}`),
+  storeAccept: (id) => api.post(`/orders/${id}/store_accept`),
+  storeReject: (id) => api.post(`/orders/${id}/reject`),
+  requestDispatch: (id) => api.post(`/orders/${id}/dispatch`),
+  driverAccept: (id) => api.post(`/orders/${id}/accept`),
+  driverReject: (id) => api.post(`/orders/${id}/driver-reject`),
+  driverStart: (id) => api.post(`/orders/${id}/start`),
+  driverComplete: (id) => api.post(`/orders/${id}/complete`),
+  getStoreOrders: (filter) => api.get(`/store/orders?filter=${filter}`).then((res) => res.data),
+  getStoreStats: () => api.get("/store/stats").then((res) => res.data),
+  getDriverDashboard: () => api.get("/driver/dashboard").then((res) => res.data),
+  getDriverAvailableOrders: () => api.get("/driver/available-orders").then((res) => res.data),
+  getDriverHistory: (period) => api.get(`/driver/history?period=${period}`).then((res) => res.data),
+  getDriverEarnings: (period) => api.get(`/driver/earnings?period=${period}`).then((res) => res.data),
+  updateDriverOnlineStatus: (payload) => api.put("/driver/online-status", payload),
+};

@@ -1,5 +1,11 @@
-import React, { useEffect, useState } from "react";
-import API from "../../api";
+import React, { useCallback, useState } from "react";
+import Card from "../../components/ui/Card";
+import Button from "../../components/ui/Button";
+import Input from "../../components/ui/Input";
+import Badge from "../../components/ui/Badge";
+import { adminService } from "../../services/adminService";
+import { formatCurrency } from "../../utils/format";
+import { usePolling } from "../../hooks/usePolling";
 
 function DriversTab() {
   const [drivers, setDrivers] = useState([]);
@@ -8,130 +14,99 @@ function DriversTab() {
     password: "",
     phone: "",
   });
-  const [editingDriver, setEditingDriver] = useState(null);
 
-  const fetchDrivers = async () => {
-    const res = await API.get("/drivers");
-    setDrivers(res.data);
-  };
-
-  useEffect(() => {
-    fetchDrivers();
+  const fetchDrivers = useCallback(async () => {
+    const data = await adminService.getDrivers();
+    setDrivers(data);
   }, []);
+
+  usePolling(fetchDrivers, 4000);
 
   const createDriver = async () => {
     if (!form.username || !form.password || !form.phone) {
       alert("기사 정보를 모두 입력하세요.");
       return;
     }
-    await API.post("/drivers", form);
+    await adminService.createDriver(form);
     setForm({ username: "", password: "", phone: "" });
     fetchDrivers();
   };
 
-  const updateDriver = async () => {
-    await API.put(`/drivers/${editingDriver._id}`, {
-      phone: editingDriver.phone,
-      onlineStatus: editingDriver.onlineStatus,
-    });
-    setEditingDriver(null);
+  const toggleOnlineStatus = async (driver) => {
+    const nextStatus = driver.onlineStatus === "online" ? "offline" : "online";
+    await adminService.updateDriver(driver._id, { onlineStatus: nextStatus, phone: driver.phone });
     fetchDrivers();
   };
 
-  const deleteDriver = async (id) => {
+  const removeDriver = async (id) => {
     if (!window.confirm("기사를 삭제할까요?")) return;
-    await API.delete(`/drivers/${id}`);
+    await adminService.deleteDriver(id);
     fetchDrivers();
   };
 
   return (
-    <>
-      <h3>🚴 기사 관리</h3>
-
-      <div className="card">
-        <h4>기사 등록</h4>
-        <input
-          placeholder="기사 아이디"
-          value={form.username}
-          onChange={(e) => setForm({ ...form, username: e.target.value })}
-        />
-        <input
-          type="password"
-          placeholder="비밀번호"
-          value={form.password}
-          onChange={(e) => setForm({ ...form, password: e.target.value })}
-        />
-        <input
-          placeholder="전화번호"
-          value={form.phone}
-          onChange={(e) => setForm({ ...form, phone: e.target.value })}
-        />
-        <button className="primary full-width-btn" onClick={createDriver}>
-          기사 등록
-        </button>
-      </div>
+    <div className="page-stack">
+      <Card>
+        <div className="section-heading">
+          <div>
+            <h3>기사 등록</h3>
+            <p>신규 기사 계정을 빠르게 개설합니다.</p>
+          </div>
+        </div>
+        <div className="two-column-grid" style={{ marginTop: 16 }}>
+          <Input label="아이디" value={form.username} onChange={(event) => setForm((prev) => ({ ...prev, username: event.target.value }))} />
+          <Input label="전화번호" value={form.phone} onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))} />
+          <Input label="비밀번호" type="password" value={form.password} onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))} />
+        </div>
+        <div className="list-actions" style={{ marginTop: 16 }}>
+          <Button onClick={createDriver}>기사 등록</Button>
+        </div>
+      </Card>
 
       {drivers.map((driver) => (
-        <div key={driver._id} className="card">
-          {editingDriver?._id === driver._id ? (
-            <>
-              <input
-                value={editingDriver.phone}
-                onChange={(e) =>
-                  setEditingDriver({ ...editingDriver, phone: e.target.value })
-                }
-              />
-              <select
-                value={editingDriver.onlineStatus || "offline"}
-                onChange={(e) =>
-                  setEditingDriver({
-                    ...editingDriver,
-                    onlineStatus: e.target.value,
-                  })
-                }
-              >
-                <option value="online">온라인</option>
-                <option value="offline">오프라인</option>
-              </select>
-              <button onClick={updateDriver}>저장</button>
-              <button onClick={() => setEditingDriver(null)}>취소</button>
-            </>
-          ) : (
-            <>
-              <div className="admin-grid">
-                <div>
-                  <p><b>{driver.username}</b></p>
-                  <p>연락처: {driver.phone}</p>
-                  <p>온라인: {driver.onlineStatus === "online" ? "온라인" : "오프라인"}</p>
-                  <p>현재 상태: {driver.currentDeliveryStatus}</p>
-                </div>
-                <div>
-                  <p>누적 수익: {driver.earnings?.toLocaleString()}원</p>
-                  <p>완료 배달: {driver.deliveries}건</p>
-                  <button onClick={() => setEditingDriver(driver)}>수정</button>
-                  <button className="danger" onClick={() => deleteDriver(driver._id)}>
-                    삭제
-                  </button>
-                </div>
-              </div>
+        <Card key={driver._id}>
+          <div className="section-heading">
+            <div>
+              <h3>{driver.username}</h3>
+              <p>{driver.phone}</p>
+            </div>
+            <div className="status-row">
+              <Badge status={driver.onlineStatus}>{driver.onlineStatus}</Badge>
+              <Badge status={driver.currentDeliveryStatus}>{driver.currentDeliveryStatus}</Badge>
+            </div>
+          </div>
 
-              <h4>배달 내역</h4>
-              {driver.orders?.length > 0 ? (
-                driver.orders.map((order) => (
-                  <div key={order._id} className="mini-card">
-                    <p>{order.order_id}</p>
-                    <p>{order.store} / {order.status}</p>
-                    <p>{order.total_price?.toLocaleString()}원</p>
-                  </div>
-                ))
-              ) : (
-                <p>배달 내역 없음</p>
-              )}
-            </>
-          )}
-        </div>
+          <div className="dashboard-grid" style={{ marginTop: 16 }}>
+            <Card className="mini-card metric-card">
+              <h3>{formatCurrency(driver.earnings)}</h3>
+              <p>누적 수익</p>
+            </Card>
+            <Card className="mini-card metric-card">
+              <h3>{driver.deliveries}건</h3>
+              <p>완료 배달</p>
+            </Card>
+          </div>
+
+          <div className="list-actions" style={{ marginTop: 16 }}>
+            <Button variant="secondary" onClick={() => toggleOnlineStatus(driver)}>
+              {driver.onlineStatus === "online" ? "오프라인 전환" : "온라인 전환"}
+            </Button>
+            <Button variant="danger" onClick={() => removeDriver(driver._id)}>
+              기사 삭제
+            </Button>
+          </div>
+
+          <Card className="mini-card" style={{ marginTop: 16 }}>
+            <strong>최근 배달 내역</strong>
+            {driver.orders?.slice(0, 5).map((order) => (
+              <div key={order._id}>
+                {order.order_id} · {order.store} · {formatCurrency(order.driver_fee)}
+              </div>
+            ))}
+          </Card>
+        </Card>
       ))}
-    </>
+    </div>
   );
 }
 
