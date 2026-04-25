@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from jose import jwt
 from pydantic import BaseModel
 
-from backend.core.config import (
+from core.config import (
     ADMIN_ORDER_FILTERS,
     ALL_ROLES,
     ALGORITHM,
@@ -20,7 +20,7 @@ from backend.core.config import (
     STATUS_TO_KOREAN,
     STORE_ORDER_FILTERS,
 )
-from backend.core.database import db
+from core.database import db
 
 
 class LoginData(BaseModel):
