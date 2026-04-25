@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
-from backend.core.security import get_current_user, require_roles
-from backend.services.platform_service import (
+from core.security import get_current_user, require_roles
+from services.platform_service import (
     Order,
     OrderStatusUpdate,
     admin_delete_order,
