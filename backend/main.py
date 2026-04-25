@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from backend.routers import admin, auth, driver, menus, notices, orders, store
+from backend import admin, auth, driver, menus, notices, orders, store
 from backend.services.platform_service import ensure_default_admin
 
 app = FastAPI()
