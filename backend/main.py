@@ -37,7 +37,6 @@ async def options_handler(path: str):
 ensure_default_admin()
 
 app.include_router(auth.router)
-app.include_router(notices.router)
 app.include_router(menus.router)
 app.include_router(orders.router)
 app.include_router(admin.router)
