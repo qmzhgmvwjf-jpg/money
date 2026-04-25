@@ -2,9 +2,9 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt
 
-from backend.core.config import ALGORITHM, SECRET_KEY
-from backend.core.database import db
-from backend.services.platform_service import get_store_by_owner, get_user_by_username, now_utc
+from core.config import ALGORITHM, SECRET_KEY
+from core.database import db
+from services.platform_service import get_store_by_owner, get_user_by_username, now_utc
 
 security = HTTPBearer()
 

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 
-from backend.core.security import require_roles
-from backend.services.platform_service import (
+from core.security import require_roles
+from services.platform_service import (
     StoreTimeUpdate,
     ToggleAutoAcceptPayload,
     ToggleOpenPayload,
