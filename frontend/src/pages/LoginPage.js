@@ -29,6 +29,7 @@ function LoginPage() {
       if (data.phone) localStorage.setItem("phone", data.phone);
       if (data.address) localStorage.setItem("address", data.address);
       if (data.storeName) localStorage.setItem("storeName", data.storeName);
+      if (data.storeId) localStorage.setItem("storeId", data.storeId);
       if (data.onlineStatus) localStorage.setItem("onlineStatus", data.onlineStatus);
 
       if (data.role === "admin") navigate("/admin");

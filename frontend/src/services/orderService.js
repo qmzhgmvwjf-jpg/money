@@ -1,7 +1,11 @@
 import api from "./api";
 
 export const orderService = {
-  getMenus: () => api.get("/menus").then((res) => res.data),
+  getPublicStores: () => api.get("/stores").then((res) => res.data),
+  getMenus: (storeId) =>
+    api
+      .get(storeId ? `/menus?store_id=${storeId}` : "/menus")
+      .then((res) => res.data),
   createOrder: (payload) => api.post("/orders", payload).then((res) => res.data),
   getMyOrders: () => api.get("/my-orders").then((res) => res.data),
   getTrackingOrders: () => api.get("/my-orders").then((res) => res.data),
@@ -17,6 +21,14 @@ export const orderService = {
   driverComplete: (id) => api.post(`/orders/${id}/complete`),
   getStoreOrders: (filter) => api.get(`/store/orders?filter=${filter}`).then((res) => res.data),
   getStoreStats: () => api.get("/store/stats").then((res) => res.data),
+  getStoreMyInfo: () => api.get("/store/my-info").then((res) => res.data),
+  toggleStoreOpen: (payload) => api.put("/store/toggle-open", payload).then((res) => res.data),
+  setStoreTime: (payload) => api.put("/store/set-time", payload).then((res) => res.data),
+  toggleStoreAutoAccept: (payload) =>
+    api.put("/store/toggle-auto-accept", payload).then((res) => res.data),
+  createMenu: (payload) => api.post("/menus", payload).then((res) => res.data),
+  updateMenu: (id, payload) => api.put(`/menus/${id}`, payload).then((res) => res.data),
+  deleteMenu: (id) => api.delete(`/menus/${id}`),
   getDriverDashboard: () => api.get("/driver/dashboard").then((res) => res.data),
   getDriverAvailableOrders: () => api.get("/driver/available-orders").then((res) => res.data),
   getDriverHistory: (period) => api.get(`/driver/history?period=${period}`).then((res) => res.data),

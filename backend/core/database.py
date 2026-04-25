@@ -5,6 +5,7 @@ client = MongoClient(
 )
 db = client["delivery"]
 db.users.create_index("username", unique=True)
+db.stores.create_index("owner", unique=True)
 db.orders.create_index("order_id", unique=True, sparse=True)
 db.notices.create_index("created_at")
 db.activity_logs.create_index("created_at")

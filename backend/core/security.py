@@ -4,7 +4,7 @@ from jose import jwt
 
 from backend.core.config import ALGORITHM, SECRET_KEY
 from backend.core.database import db
-from backend.services.platform_service import get_user_by_username, now_utc
+from backend.services.platform_service import get_store_by_owner, get_user_by_username, now_utc
 
 security = HTTPBearer()
 
@@ -23,14 +23,22 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         raise HTTPException(status_code=403, detail="승인 대기 중인 계정입니다.")
 
     db.users.update_one({"_id": db_user["_id"]}, {"$set": {"last_active_at": now_utc()}})
+    store = get_store_by_owner(db_user["username"]) if db_user["role"] == "store" else None
     return {
         "id": str(db_user["_id"]),
         "username": db_user["username"],
         "role": db_user["role"],
-        "storeName": db_user.get("storeName"),
         "phone": db_user.get("phone"),
         "address": db_user.get("address"),
         "onlineStatus": db_user.get("onlineStatus"),
+        "store": {
+            "_id": str(store["_id"]),
+            "name": store.get("name"),
+            "approved": store.get("approved", False),
+            "isOpen": store.get("isOpen", False),
+        }
+        if store
+        else None,
     }
 
 

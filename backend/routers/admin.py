@@ -11,11 +11,11 @@ from backend.services.platform_service import (
     create_store,
     delete_driver,
     delete_store,
+    get_admin_stores,
     get_admin_orders,
     get_customers,
     get_drivers,
     get_stats,
-    get_stores,
     update_customer,
     update_driver,
     update_store,
@@ -29,9 +29,9 @@ def admin_orders(filter: str = Query(default="all"), user=Depends(require_roles(
     return get_admin_orders(filter)
 
 
-@router.get("/stores")
-def stores(user=Depends(require_roles(["admin"]))):
-    return get_stores()
+@router.get("/admin/stores")
+def admin_stores(user=Depends(require_roles(["admin"]))):
+    return get_admin_stores()
 
 
 @router.post("/stores")

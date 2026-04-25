@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends
+from fastapi import Query
 
 from backend.core.security import require_roles
-from backend.services.platform_service import Menu, create_menu, delete_menu, get_menus, update_menu
+from backend.services.platform_service import Menu, create_menu, delete_menu, get_menu_list, update_menu
 
 router = APIRouter()
 
@@ -12,8 +13,8 @@ def post_menu(menu: Menu, user=Depends(require_roles(["admin", "store"]))):
 
 
 @router.get("/menus")
-def menus():
-    return get_menus()
+def menus(store_id: str | None = Query(default=None)):
+    return get_menu_list(store_id)
 
 
 @router.delete("/menus/{menu_id}")

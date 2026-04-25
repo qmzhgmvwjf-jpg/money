@@ -1,7 +1,7 @@
 import api from "./api";
 
 export const adminService = {
-  getStores: () => api.get("/stores").then((res) => res.data),
+  getStores: () => api.get("/admin/stores").then((res) => res.data),
   createStore: (payload) => api.post("/stores", payload).then((res) => res.data),
   updateStore: (id, payload) => api.put(`/stores/${id}`, payload).then((res) => res.data),
   deleteStore: (id) => api.delete(`/stores/${id}`),
