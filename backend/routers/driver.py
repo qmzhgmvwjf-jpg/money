@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 
-from core.security import require_roles
-from services.platform_service import (
+from backend.core.security import require_roles
+from backend.services.platform_service import (
     DriverOnlineUpdate,
     get_driver_available_orders,
     get_driver_dashboard,
