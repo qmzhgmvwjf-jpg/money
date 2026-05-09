@@ -1,17 +1,22 @@
 from fastapi import APIRouter, Depends, Query
 
-from core.security import require_roles
-from services.platform_service import (
+from backend.core.security import require_roles
+from backend.services.platform_service import (
+    StoreSettingsUpdate,
+    StoreTopupRequestCreate,
     StoreTimeUpdate,
     ToggleAutoAcceptPayload,
     ToggleOpenPayload,
     get_public_stores,
+    get_store_finance,
     get_store_my_info,
     get_store_orders,
     get_store_stats,
+    request_store_topup,
     set_store_time,
     toggle_store_auto_accept,
     toggle_store_open,
+    update_store_settings,
 )
 
 router = APIRouter()
@@ -37,6 +42,11 @@ def store_my_info(user=Depends(require_roles(["store"]))):
     return get_store_my_info(user)
 
 
+@router.put("/store/settings")
+def store_settings(data: StoreSettingsUpdate, user=Depends(require_roles(["store"]))):
+    return update_store_settings(user, data)
+
+
 @router.put("/store/toggle-open")
 def store_toggle_open(data: ToggleOpenPayload, user=Depends(require_roles(["store"]))):
     return toggle_store_open(user, data.isOpen)
@@ -53,3 +63,13 @@ def store_toggle_auto_accept(
     user=Depends(require_roles(["store"])),
 ):
     return toggle_store_auto_accept(user, data.autoAccept)
+
+
+@router.get("/store/finance")
+def store_finance(user=Depends(require_roles(["store"]))):
+    return get_store_finance(user)
+
+
+@router.post("/store/topup-requests")
+def store_topup_request(data: StoreTopupRequestCreate, user=Depends(require_roles(["store"]))):
+    return request_store_topup(user, data)

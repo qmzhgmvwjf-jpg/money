@@ -22,10 +22,13 @@ export const orderService = {
   getStoreOrders: (filter) => api.get(`/store/orders?filter=${filter}`).then((res) => res.data),
   getStoreStats: () => api.get("/store/stats").then((res) => res.data),
   getStoreMyInfo: () => api.get("/store/my-info").then((res) => res.data),
+  updateStoreSettings: (payload) => api.put("/store/settings", payload).then((res) => res.data),
   toggleStoreOpen: (payload) => api.put("/store/toggle-open", payload).then((res) => res.data),
   setStoreTime: (payload) => api.put("/store/set-time", payload).then((res) => res.data),
   toggleStoreAutoAccept: (payload) =>
     api.put("/store/toggle-auto-accept", payload).then((res) => res.data),
+  getStoreFinance: () => api.get("/store/finance").then((res) => res.data),
+  requestStoreTopup: (payload) => api.post("/store/topup-requests", payload).then((res) => res.data),
   createMenu: (payload) => api.post("/menus", payload).then((res) => res.data),
   updateMenu: (id, payload) => api.put(`/menus/${id}`, payload).then((res) => res.data),
   deleteMenu: (id) => api.delete(`/menus/${id}`),
@@ -34,4 +37,8 @@ export const orderService = {
   getDriverHistory: (period) => api.get(`/driver/history?period=${period}`).then((res) => res.data),
   getDriverEarnings: (period) => api.get(`/driver/earnings?period=${period}`).then((res) => res.data),
   updateDriverOnlineStatus: (payload) => api.put("/driver/online-status", payload),
+  getDriverSettings: () => api.get("/driver/settings").then((res) => res.data),
+  updateDriverSettings: (payload) => api.put("/driver/settings", payload).then((res) => res.data),
+  requestDriverWithdrawal: (payload) =>
+    api.post("/driver/withdrawal-requests", payload).then((res) => res.data),
 };

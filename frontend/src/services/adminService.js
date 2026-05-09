@@ -16,4 +16,19 @@ export const adminService = {
   getStats: () => api.get("/stats").then((res) => res.data),
   getActivityLogs: (limit = 20) =>
     api.get(`/admin/activity-logs?limit=${limit}`).then((res) => res.data),
+  getFinanceOverview: () => api.get("/admin/finance").then((res) => res.data),
+  getTopupRequests: (status) =>
+    api.get(status ? `/admin/topup-requests?status=${status}` : "/admin/topup-requests").then((res) => res.data),
+  approveTopup: (id, payload = {}) => api.post(`/admin/topup-requests/${id}/approve`, payload).then((res) => res.data),
+  rejectTopup: (id, payload = {}) => api.post(`/admin/topup-requests/${id}/reject`, payload).then((res) => res.data),
+  getWithdrawalRequests: (status) =>
+    api
+      .get(status ? `/admin/withdrawal-requests?status=${status}` : "/admin/withdrawal-requests")
+      .then((res) => res.data),
+  approveWithdrawal: (id, payload = {}) =>
+    api.post(`/admin/withdrawal-requests/${id}/approve`, payload).then((res) => res.data),
+  rejectWithdrawal: (id, payload = {}) =>
+    api.post(`/admin/withdrawal-requests/${id}/reject`, payload).then((res) => res.data),
+  getTransactions: (limit = 100) =>
+    api.get(`/admin/transactions?limit=${limit}`).then((res) => res.data),
 };

@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from jose import jwt
 from pydantic import BaseModel
 
-from core.config import (
+from backend.core.config import (
     ADMIN_ORDER_FILTERS,
     ALL_ROLES,
     ALGORITHM,
@@ -20,7 +20,7 @@ from core.config import (
     STATUS_TO_KOREAN,
     STORE_ORDER_FILTERS,
 )
-from core.database import db
+from backend.core.database import db
 
 
 class LoginData(BaseModel):
@@ -84,6 +84,7 @@ class Order(BaseModel):
     store_id: str
     address: str | None = None
     items: list[dict[str, Any]] | None = None
+    paymentMethod: str = "card"
 
 
 class Menu(BaseModel):
@@ -110,6 +111,42 @@ class NoticeUpdate(BaseModel):
 
 class DriverOnlineUpdate(BaseModel):
     onlineStatus: str
+
+
+class StoreSettingsUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    phone: str | None = None
+    minOrderAmount: int | None = None
+    deliveryFee: int | None = None
+    openTime: str | None = None
+    closeTime: str | None = None
+    isOpen: bool | None = None
+    autoAccept: bool | None = None
+
+
+class StoreTopupRequestCreate(BaseModel):
+    amount: int
+    depositorName: str
+    note: str | None = None
+
+
+class DriverSettingsUpdate(BaseModel):
+    phone: str | None = None
+    onlineStatus: str | None = None
+    dispatchEnabled: bool | None = None
+    bankName: str | None = None
+    accountNumber: str | None = None
+    accountHolder: str | None = None
+
+
+class DriverWithdrawalRequestCreate(BaseModel):
+    amount: int
+    note: str | None = None
+
+
+class AdminDecisionPayload(BaseModel):
+    note: str | None = None
 
 
 def now_utc() -> datetime:
@@ -178,6 +215,14 @@ def build_order_id() -> str:
     return f"ORD-{now_utc().strftime('%Y%m%d%H%M%S%f')}"
 
 
+def build_payment_id() -> str:
+    return f"PAY-{now_utc().strftime('%Y%m%d%H%M%S%f')}"
+
+
+def build_transaction_id() -> str:
+    return f"TRX-{now_utc().strftime('%Y%m%d%H%M%S%f')}"
+
+
 def is_today(value: datetime | None) -> bool:
     if not value:
         return False
@@ -226,6 +271,34 @@ def create_activity_log(actor: str, role: str, action: str, message: str):
     )
 
 
+def create_transaction_log(
+    type: str,
+    amount: int,
+    actor: str,
+    actor_role: str,
+    target: str,
+    target_role: str,
+    description: str,
+    related_id: str | None = None,
+    status: str = "completed",
+):
+    db.transactions.insert_one(
+        {
+            "transaction_id": build_transaction_id(),
+            "type": type,
+            "amount": int(amount),
+            "status": status,
+            "actor": actor,
+            "actorRole": actor_role,
+            "target": target,
+            "targetRole": target_role,
+            "description": description,
+            "related_id": related_id,
+            "created_at": now_utc(),
+        }
+    )
+
+
 def parse_clock(value: str):
     hour, minute = value.split(":")
     return int(hour), int(minute)
@@ -255,11 +328,17 @@ def serialize_store(store: dict, include_internal: bool = False) -> dict:
         "_id": str(store["_id"]),
         "name": store.get("name"),
         "owner": store.get("owner"),
+        "description": store.get("description", ""),
+        "phone": store.get("phone"),
         "isOpen": store.get("isOpen", False),
         "openTime": store.get("openTime"),
         "closeTime": store.get("closeTime"),
         "approved": store.get("approved", False),
         "autoAccept": store.get("autoAccept", False),
+        "minOrderAmount": store.get("minOrderAmount", 0),
+        "deliveryFee": store.get("deliveryFee", 0),
+        "balance": store.get("balance", 0),
+        "pendingSettlement": store.get("pendingSettlement", 0),
         "currentlyOpen": is_store_open_now(store),
         "created_at": to_iso(store.get("created_at")),
     }
@@ -281,10 +360,16 @@ def serialize_order(order: dict) -> dict:
         "user": order.get("user"),
         "customer_name": order.get("customer_name"),
         "phone": order.get("phone"),
+        "menu_total": order.get("menu_total", 0),
+        "delivery_fee": order.get("delivery_fee", 0),
         "total_price": order.get("total_price", 0),
         "status": order.get("status"),
         "driver_id": order.get("driver_id"),
         "driver_fee": order.get("driver_fee", 0),
+        "payment_id": order.get("payment_id"),
+        "payment_method": order.get("payment_method"),
+        "payment_status": order.get("payment_status"),
+        "settlement_amount": order.get("settlement_amount", 0),
         "created_at": to_iso(order.get("created_at")),
         "status_logs": [
             {**log, "created_at": to_iso(log.get("created_at"))}
@@ -314,6 +399,11 @@ def serialize_user(user: dict) -> dict:
         "approved": user.get("approved", False),
         "address": user.get("address"),
         "onlineStatus": user.get("onlineStatus", "offline"),
+        "dispatchEnabled": user.get("dispatchEnabled", True),
+        "balance": user.get("balance", 0),
+        "bankName": user.get("bankName"),
+        "accountNumber": user.get("accountNumber"),
+        "accountHolder": user.get("accountHolder"),
         "created_at": to_iso(user.get("created_at")),
         "last_active_at": to_iso(user.get("last_active_at")),
         "store": serialize_store(store) if store else None,
@@ -340,6 +430,71 @@ def serialize_activity(log: dict) -> dict:
         "action": log.get("action"),
         "message": log.get("message"),
         "created_at": to_iso(log.get("created_at")),
+    }
+
+
+def serialize_payment(payment: dict) -> dict:
+    return {
+        "_id": str(payment["_id"]),
+        "payment_id": payment.get("payment_id"),
+        "order_id": payment.get("order_id"),
+        "customer_name": payment.get("customer_name"),
+        "store_id": str(payment.get("store_id")) if payment.get("store_id") else None,
+        "store_name": payment.get("store_name"),
+        "amount": payment.get("amount", 0),
+        "method": payment.get("method"),
+        "status": payment.get("status"),
+        "created_at": to_iso(payment.get("created_at")),
+    }
+
+
+def serialize_topup_request(item: dict) -> dict:
+    return {
+        "_id": str(item["_id"]),
+        "store_id": str(item.get("store_id")) if item.get("store_id") else None,
+        "store_name": item.get("store_name"),
+        "owner": item.get("owner"),
+        "amount": item.get("amount", 0),
+        "depositorName": item.get("depositorName"),
+        "status": item.get("status"),
+        "note": item.get("note"),
+        "adminNote": item.get("adminNote"),
+        "created_at": to_iso(item.get("created_at")),
+        "processed_at": to_iso(item.get("processed_at")),
+    }
+
+
+def serialize_withdrawal_request(item: dict) -> dict:
+    return {
+        "_id": str(item["_id"]),
+        "driver_id": str(item.get("driver_id")) if item.get("driver_id") else None,
+        "driver_username": item.get("driver_username"),
+        "amount": item.get("amount", 0),
+        "status": item.get("status"),
+        "note": item.get("note"),
+        "adminNote": item.get("adminNote"),
+        "bankName": item.get("bankName"),
+        "accountNumber": item.get("accountNumber"),
+        "accountHolder": item.get("accountHolder"),
+        "created_at": to_iso(item.get("created_at")),
+        "processed_at": to_iso(item.get("processed_at")),
+    }
+
+
+def serialize_transaction(item: dict) -> dict:
+    return {
+        "_id": str(item["_id"]),
+        "transaction_id": item.get("transaction_id"),
+        "type": item.get("type"),
+        "amount": item.get("amount", 0),
+        "status": item.get("status"),
+        "actor": item.get("actor"),
+        "actorRole": item.get("actorRole"),
+        "target": item.get("target"),
+        "targetRole": item.get("targetRole"),
+        "description": item.get("description"),
+        "related_id": item.get("related_id"),
+        "created_at": to_iso(item.get("created_at")),
     }
 
 
@@ -381,6 +536,11 @@ def create_user(username: str, password: str, phone: str, role: str, **extra):
         "approved": extra.pop("approved", True),
         "address": extra.pop("address", None),
         "onlineStatus": extra.pop("onlineStatus", "offline" if role == "driver" else None),
+        "dispatchEnabled": extra.pop("dispatchEnabled", True if role == "driver" else None),
+        "balance": extra.pop("balance", 0 if role == "driver" else None),
+        "bankName": extra.pop("bankName", None),
+        "accountNumber": extra.pop("accountNumber", None),
+        "accountHolder": extra.pop("accountHolder", None),
         "created_at": now_utc(),
         "last_active_at": now_utc(),
     }
@@ -397,6 +557,7 @@ def create_store_document(
     owner: str,
     owner_user_id: ObjectId,
     approved: bool,
+    phone: str | None = None,
     is_open: bool = True,
     open_time: str = "09:00",
     close_time: str = "21:00",
@@ -406,11 +567,17 @@ def create_store_document(
         "name": name.strip(),
         "owner": owner,
         "ownerUserId": owner_user_id,
+        "description": "",
+        "phone": phone,
         "isOpen": is_open,
         "openTime": open_time,
         "closeTime": close_time,
         "approved": approved,
         "autoAccept": auto_accept,
+        "minOrderAmount": 0,
+        "deliveryFee": 3000,
+        "balance": 0,
+        "pendingSettlement": 0,
         "created_at": now_utc(),
     }
     result = db.stores.insert_one(store_doc)
@@ -441,6 +608,7 @@ def register_user(data: RegisterData):
             owner=user["username"],
             owner_user_id=user["_id"],
             approved=False,
+            phone=user.get("phone"),
             is_open=True,
         )
 
@@ -474,6 +642,8 @@ def login_user(data: LoginData):
         "phone": user.get("phone"),
         "address": user.get("address"),
         "onlineStatus": user.get("onlineStatus"),
+        "dispatchEnabled": user.get("dispatchEnabled", True),
+        "balance": user.get("balance", 0),
         "storeName": store.get("name") if store else None,
         "storeId": str(store["_id"]) if store else None,
     }
@@ -546,6 +716,7 @@ def create_store(data: StoreCreate):
         owner=user["username"],
         owner_user_id=user["_id"],
         approved=True,
+        phone=user.get("phone"),
         open_time=data.openTime,
         close_time=data.closeTime,
     )
@@ -690,14 +861,39 @@ def create_order(order: Order, actor: dict):
 
     items = order.items or []
     address = order.address or actor.get("address")
-    total_price = calc_total_price(items)
+    menu_total = calc_total_price(items)
+    delivery_fee = int(store.get("deliveryFee", 0) or 0)
+    total_price = menu_total + delivery_fee
+    min_order_amount = int(store.get("minOrderAmount", 0) or 0)
     initial_status = "accepted" if store.get("autoAccept", False) else "pending"
     initial_message = "주문 생성"
     if initial_status == "accepted":
         initial_message = "자동 수락 처리된 주문"
+    if not items:
+        raise HTTPException(status_code=400, detail="주문 메뉴를 선택하세요.")
+    if menu_total < min_order_amount:
+        raise HTTPException(
+            status_code=400,
+            detail=f"최소 주문 금액은 {min_order_amount}원입니다.",
+        )
 
     if address:
         db.users.update_one({"username": actor["username"]}, {"$set": {"address": address}})
+
+    payment_doc = {
+        "payment_id": build_payment_id(),
+        "customer_name": actor["username"],
+        "store_id": store["_id"],
+        "store_name": store.get("name"),
+        "amount": total_price,
+        "method": order.paymentMethod,
+        "status": "paid",
+        "created_at": now_utc(),
+    }
+    payment_result = db.payments.insert_one(payment_doc)
+    payment_doc["_id"] = payment_result.inserted_id
+
+    driver_fee = delivery_fee if delivery_fee > 0 else calc_driver_fee(total_price)
 
     order_doc = {
         "order_id": build_order_id(),
@@ -707,19 +903,36 @@ def create_order(order: Order, actor: dict):
         "phone": actor.get("phone"),
         "address": address,
         "items": items,
+        "menu_total": menu_total,
+        "delivery_fee": delivery_fee,
         "total_price": total_price,
         "status": initial_status,
         "store_id": store["_id"],
         "store_name": store.get("name"),
         "driver_id": None,
-        "driver_fee": calc_driver_fee(total_price),
+        "driver_fee": driver_fee,
+        "settlement_amount": 0,
+        "payment_id": payment_doc["payment_id"],
+        "payment_method": order.paymentMethod,
+        "payment_status": "paid",
         "status_logs": [status_log_entry(initial_status, actor["username"], initial_message)],
         "rejected_drivers": [],
     }
     result = db.orders.insert_one(order_doc)
     order_doc["_id"] = result.inserted_id
+    db.payments.update_one({"_id": payment_doc["_id"]}, {"$set": {"order_id": order_doc["order_id"]}})
 
     create_activity_log(actor["username"], actor["role"], "create_order", f"{order_doc['order_id']} 주문 생성")
+    create_transaction_log(
+        "payment",
+        total_price,
+        actor["username"],
+        actor["role"],
+        store.get("name"),
+        "store",
+        f"{order_doc['order_id']} 결제 완료",
+        related_id=order_doc["order_id"],
+    )
     return {"message": "ok", "order": serialize_order(order_doc)}
 
 
@@ -819,6 +1032,8 @@ def driver_accept(order_id: str, actor: dict):
     driver_user = get_user_by_username(actor["username"])
     if driver_user and driver_user.get("onlineStatus") != "online":
         raise HTTPException(status_code=400, detail="온라인 상태에서만 배차를 수락할 수 있습니다.")
+    if driver_user and not driver_user.get("dispatchEnabled", True):
+        raise HTTPException(status_code=400, detail="배차 수신이 꺼져 있습니다.")
 
     order = get_order_or_404(order_id)
     if order.get("status") != "dispatch_ready":
@@ -852,6 +1067,8 @@ def driver_start(order_id: str, actor: dict):
     order = get_order_or_404(order_id)
     if order.get("driver_id") != actor["username"]:
         raise HTTPException(status_code=403, detail="본인 배달만 시작할 수 있습니다.")
+    if order.get("status") != "assigned":
+        raise HTTPException(status_code=400, detail="배달 시작 가능한 상태가 아닙니다.")
     append_order_status(order, "delivering", actor["username"], "배달 시작")
     create_activity_log(actor["username"], "driver", "start_delivery", f"{order.get('order_id')} 배달 시작")
     return {"message": "started"}
@@ -861,7 +1078,60 @@ def driver_complete(order_id: str, actor: dict):
     order = get_order_or_404(order_id)
     if order.get("driver_id") != actor["username"]:
         raise HTTPException(status_code=403, detail="본인 배달만 완료할 수 있습니다.")
+    if order.get("status") not in {"assigned", "delivering"}:
+        raise HTTPException(status_code=400, detail="배달 완료 가능한 상태가 아닙니다.")
     append_order_status(order, "completed", actor["username"], "배달 완료")
+    store = db.stores.find_one({"_id": order.get("store_id")}) if order.get("store_id") else None
+    driver_fee = int(order.get("driver_fee", 0) or 0)
+    total_price = int(order.get("total_price", 0) or 0)
+    settlement_amount = max(total_price - driver_fee, 0)
+
+    if store:
+        db.stores.update_one(
+            {"_id": store["_id"]},
+            {
+                "$inc": {
+                    "pendingSettlement": settlement_amount,
+                    "balance": -driver_fee,
+                }
+            },
+        )
+        create_transaction_log(
+            "settlement",
+            settlement_amount,
+            actor["username"],
+            "driver",
+            store.get("name"),
+            "store",
+            f"{order.get('order_id')} 가게 정산 적립",
+            related_id=order.get("order_id"),
+        )
+        create_transaction_log(
+            "delivery_fee",
+            driver_fee,
+            store.get("name"),
+            "store",
+            actor["username"],
+            "driver",
+            f"{order.get('order_id')} 배달비 차감",
+            related_id=order.get("order_id"),
+        )
+
+    db.orders.update_one(
+        {"_id": order["_id"]},
+        {"$set": {"settlement_amount": settlement_amount}},
+    )
+    db.users.update_one({"username": actor["username"]}, {"$inc": {"balance": driver_fee}})
+    create_transaction_log(
+        "driver_earning",
+        driver_fee,
+        store.get("name") if store else "system",
+        "store",
+        actor["username"],
+        "driver",
+        f"{order.get('order_id')} 기사 수익 적립",
+        related_id=order.get("order_id"),
+    )
     create_activity_log(actor["username"], "driver", "complete_delivery", f"{order.get('order_id')} 배달 완료")
     return {"message": "completed"}
 
@@ -1003,9 +1273,187 @@ def get_stats():
         "total_orders": total_orders,
         "total_sales": total_sales,
         "today_orders": today_orders,
+        "totalOrders": total_orders,
+        "totalSales": total_sales,
+        "todayOrders": today_orders,
         "store_sales": store_sales,
         "status_count": status_count,
     }
+
+
+def get_finance_overview():
+    completed_orders = list(db.orders.find({"status": "completed"}))
+    stores = [serialize_store(store, include_internal=True) for store in db.stores.find().sort("name", 1)]
+    drivers = [serialize_user(driver) for driver in db.users.find({"role": "driver"}).sort("username", 1)]
+
+    store_settlements = [
+        {
+            "store_id": store["_id"],
+            "store_name": store["name"],
+            "balance": store.get("balance", 0),
+            "pendingSettlement": store.get("pendingSettlement", 0),
+        }
+        for store in stores
+    ]
+    driver_balances = [
+        {
+            "driver_id": driver["_id"],
+            "driver_username": driver["username"],
+            "balance": driver.get("balance", 0),
+            "bankName": driver.get("bankName"),
+            "accountNumber": driver.get("accountNumber"),
+        }
+        for driver in drivers
+    ]
+
+    return {
+        "totalRevenue": sum(order.get("total_price", 0) for order in completed_orders),
+        "pendingTopups": db.topup_requests.count_documents({"status": "pending"}),
+        "pendingWithdrawals": db.withdrawal_requests.count_documents({"status": "pending"}),
+        "storeSettlements": store_settlements,
+        "driverBalances": driver_balances,
+        "recentTransactions": [
+            serialize_transaction(item)
+            for item in db.transactions.find().sort("created_at", -1).limit(20)
+        ],
+    }
+
+
+def get_topup_requests(status: str | None = None):
+    query = {}
+    if status:
+        query["status"] = status
+    return [
+        serialize_topup_request(item)
+        for item in db.topup_requests.find(query).sort("created_at", -1)
+    ]
+
+
+def approve_topup_request(request_id: str, actor: str, note: str | None = None):
+    request_doc = db.topup_requests.find_one({"_id": object_id_or_400(request_id, "topup request id")})
+    if not request_doc:
+        raise HTTPException(status_code=404, detail="Topup request not found")
+    if request_doc.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="이미 처리된 충전 요청입니다.")
+
+    db.topup_requests.update_one(
+        {"_id": request_doc["_id"]},
+        {"$set": {"status": "approved", "adminNote": note, "processed_at": now_utc()}},
+    )
+    db.stores.update_one({"_id": request_doc["store_id"]}, {"$inc": {"balance": int(request_doc.get("amount", 0))}})
+    create_activity_log(actor, "admin", "approve_topup", f"{request_doc.get('store_name')} 충전 승인")
+    create_transaction_log(
+        "topup_approved",
+        int(request_doc.get("amount", 0)),
+        actor,
+        "admin",
+        request_doc.get("store_name"),
+        "store",
+        "가게 충전 승인",
+        related_id=str(request_doc["_id"]),
+    )
+    return serialize_topup_request(db.topup_requests.find_one({"_id": request_doc["_id"]}))
+
+
+def reject_topup_request(request_id: str, actor: str, note: str | None = None):
+    request_doc = db.topup_requests.find_one({"_id": object_id_or_400(request_id, "topup request id")})
+    if not request_doc:
+        raise HTTPException(status_code=404, detail="Topup request not found")
+    if request_doc.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="이미 처리된 충전 요청입니다.")
+
+    db.topup_requests.update_one(
+        {"_id": request_doc["_id"]},
+        {"$set": {"status": "rejected", "adminNote": note, "processed_at": now_utc()}},
+    )
+    create_activity_log(actor, "admin", "reject_topup", f"{request_doc.get('store_name')} 충전 거절")
+    create_transaction_log(
+        "topup_rejected",
+        int(request_doc.get("amount", 0)),
+        actor,
+        "admin",
+        request_doc.get("store_name"),
+        "store",
+        "가게 충전 거절",
+        related_id=str(request_doc["_id"]),
+        status="rejected",
+    )
+    return serialize_topup_request(db.topup_requests.find_one({"_id": request_doc["_id"]}))
+
+
+def get_withdrawal_requests(status: str | None = None):
+    query = {}
+    if status:
+        query["status"] = status
+    return [
+        serialize_withdrawal_request(item)
+        for item in db.withdrawal_requests.find(query).sort("created_at", -1)
+    ]
+
+
+def approve_withdrawal_request(request_id: str, actor: str, note: str | None = None):
+    request_doc = db.withdrawal_requests.find_one({"_id": object_id_or_400(request_id, "withdrawal request id")})
+    if not request_doc:
+        raise HTTPException(status_code=404, detail="Withdrawal request not found")
+    if request_doc.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="이미 처리된 출금 요청입니다.")
+
+    driver = db.users.find_one({"_id": request_doc["driver_id"]})
+    if not driver:
+        raise HTTPException(status_code=404, detail="Driver not found")
+    if int(driver.get("balance", 0) or 0) < int(request_doc.get("amount", 0) or 0):
+        raise HTTPException(status_code=400, detail="기사 잔액이 부족합니다.")
+
+    db.withdrawal_requests.update_one(
+        {"_id": request_doc["_id"]},
+        {"$set": {"status": "approved", "adminNote": note, "processed_at": now_utc()}},
+    )
+    db.users.update_one({"_id": driver["_id"]}, {"$inc": {"balance": -int(request_doc.get("amount", 0))}})
+    create_activity_log(actor, "admin", "approve_withdrawal", f"{request_doc.get('driver_username')} 출금 승인")
+    create_transaction_log(
+        "withdrawal_approved",
+        int(request_doc.get("amount", 0)),
+        actor,
+        "admin",
+        request_doc.get("driver_username"),
+        "driver",
+        "기사 출금 승인",
+        related_id=str(request_doc["_id"]),
+    )
+    return serialize_withdrawal_request(db.withdrawal_requests.find_one({"_id": request_doc["_id"]}))
+
+
+def reject_withdrawal_request(request_id: str, actor: str, note: str | None = None):
+    request_doc = db.withdrawal_requests.find_one({"_id": object_id_or_400(request_id, "withdrawal request id")})
+    if not request_doc:
+        raise HTTPException(status_code=404, detail="Withdrawal request not found")
+    if request_doc.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="이미 처리된 출금 요청입니다.")
+
+    db.withdrawal_requests.update_one(
+        {"_id": request_doc["_id"]},
+        {"$set": {"status": "rejected", "adminNote": note, "processed_at": now_utc()}},
+    )
+    create_activity_log(actor, "admin", "reject_withdrawal", f"{request_doc.get('driver_username')} 출금 거절")
+    create_transaction_log(
+        "withdrawal_rejected",
+        int(request_doc.get("amount", 0)),
+        actor,
+        "admin",
+        request_doc.get("driver_username"),
+        "driver",
+        "기사 출금 거절",
+        related_id=str(request_doc["_id"]),
+        status="rejected",
+    )
+    return serialize_withdrawal_request(db.withdrawal_requests.find_one({"_id": request_doc["_id"]}))
+
+
+def get_transactions(limit: int = 100):
+    return [
+        serialize_transaction(item)
+        for item in db.transactions.find().sort("created_at", -1).limit(limit)
+    ]
 
 
 def update_driver_online_status(actor: dict, data: DriverOnlineUpdate):
@@ -1029,6 +1477,8 @@ def get_driver_dashboard(actor: dict):
 
     return {
         "onlineStatus": driver_user.get("onlineStatus", "offline") if driver_user else "offline",
+        "dispatchEnabled": driver_user.get("dispatchEnabled", True) if driver_user else True,
+        "balance": driver_user.get("balance", 0) if driver_user else 0,
         "todayDeliveries": len(completed_today),
         "todayEarnings": sum(order.get("driver_fee", 0) for order in completed_today),
         "currentStatus": get_driver_current_status(actor["username"]),
@@ -1037,6 +1487,9 @@ def get_driver_dashboard(actor: dict):
 
 
 def get_driver_available_orders(actor: dict):
+    driver_user = get_user_by_username(actor["username"])
+    if not driver_user or driver_user.get("onlineStatus") != "online" or not driver_user.get("dispatchEnabled", True):
+        return []
     return [
         serialize_order(order)
         for order in db.orders.find(
@@ -1075,6 +1528,91 @@ def get_driver_earnings(actor: dict, period: str):
     }
 
 
+def get_driver_settings(actor: dict):
+    driver = get_user_by_username(actor["username"])
+    if not driver:
+        raise HTTPException(status_code=404, detail="Driver not found")
+
+    requests = [
+        serialize_withdrawal_request(item)
+        for item in db.withdrawal_requests.find({"driver_username": actor["username"]}).sort("created_at", -1)
+    ]
+
+    return {
+        **serialize_user(driver),
+        "withdrawalRequests": requests,
+    }
+
+
+def update_driver_settings(actor: dict, data: DriverSettingsUpdate):
+    driver = get_user_by_username(actor["username"])
+    if not driver:
+        raise HTTPException(status_code=404, detail="Driver not found")
+
+    update_data = {}
+    if data.phone is not None:
+        update_data["phone"] = data.phone.strip()
+    if data.onlineStatus is not None:
+        if data.onlineStatus not in DRIVER_ONLINE_STATUSES:
+            raise HTTPException(status_code=400, detail="유효하지 않은 온라인 상태입니다.")
+        update_data["onlineStatus"] = data.onlineStatus
+    if data.dispatchEnabled is not None:
+        update_data["dispatchEnabled"] = data.dispatchEnabled
+    if data.bankName is not None:
+        update_data["bankName"] = data.bankName.strip()
+    if data.accountNumber is not None:
+        update_data["accountNumber"] = data.accountNumber.strip()
+    if data.accountHolder is not None:
+        update_data["accountHolder"] = data.accountHolder.strip()
+
+    if update_data:
+        db.users.update_one({"_id": driver["_id"]}, {"$set": update_data})
+        create_activity_log(actor["username"], "driver", "update_driver_settings", "기사 설정 수정")
+
+    return get_driver_settings(actor)
+
+
+def request_driver_withdrawal(actor: dict, data: DriverWithdrawalRequestCreate):
+    driver = get_user_by_username(actor["username"])
+    if not driver:
+        raise HTTPException(status_code=404, detail="Driver not found")
+    if data.amount <= 0:
+        raise HTTPException(status_code=400, detail="출금 금액은 0보다 커야 합니다.")
+    if int(driver.get("balance", 0) or 0) < data.amount:
+        raise HTTPException(status_code=400, detail="출금 가능 금액이 부족합니다.")
+    if not driver.get("bankName") or not driver.get("accountNumber") or not driver.get("accountHolder"):
+        raise HTTPException(status_code=400, detail="출금 전 계좌 정보를 먼저 등록하세요.")
+
+    request_doc = {
+        "driver_id": driver["_id"],
+        "driver_username": actor["username"],
+        "amount": int(data.amount),
+        "status": "pending",
+        "note": data.note,
+        "adminNote": None,
+        "bankName": driver.get("bankName"),
+        "accountNumber": driver.get("accountNumber"),
+        "accountHolder": driver.get("accountHolder"),
+        "created_at": now_utc(),
+        "processed_at": None,
+    }
+    result = db.withdrawal_requests.insert_one(request_doc)
+    request_doc["_id"] = result.inserted_id
+    create_activity_log(actor["username"], "driver", "request_withdrawal", f"{data.amount}원 출금 요청")
+    create_transaction_log(
+        "withdraw_request",
+        data.amount,
+        actor["username"],
+        "driver",
+        "admin",
+        "admin",
+        "기사 출금 요청",
+        related_id=str(request_doc["_id"]),
+        status="pending",
+    )
+    return serialize_withdrawal_request(request_doc)
+
+
 def get_store_orders(actor: dict, filter_value: str):
     store = get_store_by_owner(actor["username"])
     if not store:
@@ -1104,6 +1642,8 @@ def get_store_stats(actor: dict):
         "totalOrders": len(orders),
         "completedOrders": len(completed_orders),
         "cancelledOrders": len([order for order in orders if order.get("status") == "cancelled"]),
+        "pendingSettlement": store.get("pendingSettlement", 0),
+        "balance": store.get("balance", 0),
         "orders": [serialize_order(order) for order in orders[:20]],
     }
 
@@ -1118,7 +1658,102 @@ def get_store_my_info(actor: dict):
         **serialize_store(store, include_internal=True),
         "menus": menus,
         "currentOrderCount": get_store_current_order_count(store["_id"]),
+        "topupRequests": [
+            serialize_topup_request(item)
+            for item in db.topup_requests.find({"store_id": store["_id"]}).sort("created_at", -1).limit(10)
+        ],
     }
+
+
+def update_store_settings(actor: dict, data: StoreSettingsUpdate):
+    store = get_store_by_owner(actor["username"])
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+
+    update_data = {}
+    if data.name is not None:
+        update_data["name"] = data.name.strip()
+    if data.description is not None:
+        update_data["description"] = data.description.strip()
+    if data.phone is not None:
+        update_data["phone"] = data.phone.strip()
+        db.users.update_one({"username": actor["username"]}, {"$set": {"phone": data.phone.strip()}})
+    if data.minOrderAmount is not None:
+        update_data["minOrderAmount"] = int(data.minOrderAmount)
+    if data.deliveryFee is not None:
+        update_data["deliveryFee"] = int(data.deliveryFee)
+    if data.openTime is not None:
+        update_data["openTime"] = data.openTime
+    if data.closeTime is not None:
+        update_data["closeTime"] = data.closeTime
+    if data.isOpen is not None:
+        update_data["isOpen"] = data.isOpen
+    if data.autoAccept is not None:
+        update_data["autoAccept"] = data.autoAccept
+
+    if update_data:
+        db.stores.update_one({"_id": store["_id"]}, {"$set": update_data})
+        create_activity_log(actor["username"], "store", "update_store_settings", "가게 설정 수정")
+
+    return get_store_my_info(actor)
+
+
+def get_store_finance(actor: dict):
+    store = get_store_by_owner(actor["username"])
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+
+    payments = [
+        serialize_payment(item)
+        for item in db.payments.find({"store_id": store["_id"]}).sort("created_at", -1).limit(20)
+    ]
+    topup_requests = [
+        serialize_topup_request(item)
+        for item in db.topup_requests.find({"store_id": store["_id"]}).sort("created_at", -1)
+    ]
+
+    return {
+        "balance": store.get("balance", 0),
+        "pendingSettlement": store.get("pendingSettlement", 0),
+        "payments": payments,
+        "topupRequests": topup_requests,
+    }
+
+
+def request_store_topup(actor: dict, data: StoreTopupRequestCreate):
+    store = get_store_by_owner(actor["username"])
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+    if data.amount <= 0:
+        raise HTTPException(status_code=400, detail="충전 금액은 0보다 커야 합니다.")
+
+    request_doc = {
+        "store_id": store["_id"],
+        "store_name": store.get("name"),
+        "owner": actor["username"],
+        "amount": int(data.amount),
+        "depositorName": data.depositorName.strip(),
+        "status": "pending",
+        "note": data.note,
+        "adminNote": None,
+        "created_at": now_utc(),
+        "processed_at": None,
+    }
+    result = db.topup_requests.insert_one(request_doc)
+    request_doc["_id"] = result.inserted_id
+    create_activity_log(actor["username"], "store", "request_topup", f"{data.amount}원 충전 요청")
+    create_transaction_log(
+        "topup_request",
+        data.amount,
+        actor["username"],
+        "store",
+        "admin",
+        "admin",
+        "가게 충전 요청",
+        related_id=str(request_doc["_id"]),
+        status="pending",
+    )
+    return serialize_topup_request(request_doc)
 
 
 def toggle_store_open(actor: dict, is_open: bool):

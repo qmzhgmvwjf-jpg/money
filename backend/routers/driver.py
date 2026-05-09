@@ -1,12 +1,17 @@
 from fastapi import APIRouter, Depends, Query
 
-from core.security import require_roles
-from services.platform_service import (
+from backend.core.security import require_roles
+from backend.services.platform_service import (
+    DriverSettingsUpdate,
+    DriverWithdrawalRequestCreate,
     DriverOnlineUpdate,
     get_driver_available_orders,
     get_driver_dashboard,
     get_driver_earnings,
     get_driver_history,
+    get_driver_settings,
+    request_driver_withdrawal,
+    update_driver_settings,
     update_driver_online_status,
 )
 
@@ -36,3 +41,18 @@ def history(period: str = Query(default="day"), user=Depends(require_roles(["dri
 @router.get("/driver/earnings")
 def earnings(period: str = Query(default="day"), user=Depends(require_roles(["driver"]))):
     return get_driver_earnings(user, period)
+
+
+@router.get("/driver/settings")
+def driver_settings(user=Depends(require_roles(["driver"]))):
+    return get_driver_settings(user)
+
+
+@router.put("/driver/settings")
+def put_driver_settings(data: DriverSettingsUpdate, user=Depends(require_roles(["driver"]))):
+    return update_driver_settings(user, data)
+
+
+@router.post("/driver/withdrawal-requests")
+def post_driver_withdrawal(data: DriverWithdrawalRequestCreate, user=Depends(require_roles(["driver"]))):
+    return request_driver_withdrawal(user, data)

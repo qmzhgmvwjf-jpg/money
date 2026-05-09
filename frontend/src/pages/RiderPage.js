@@ -16,6 +16,7 @@ const tabs = [
   { key: "home", label: "홈", icon: "🏍" },
   { key: "history", label: "내역", icon: "🧾" },
   { key: "earnings", label: "수익", icon: "💸" },
+  { key: "settings", label: "설정", icon: "⚙️" },
   { key: "messages", label: "메시지", icon: "💬" },
 ];
 
@@ -29,6 +30,14 @@ function RiderPage() {
   const [historyOrders, setHistoryOrders] = useState([]);
   const [earningsPeriod, setEarningsPeriod] = useState("day");
   const [earnings, setEarnings] = useState(null);
+  const [settings, setSettings] = useState(null);
+  const [settingsForm, setSettingsForm] = useState({
+    phone: "",
+    bankName: "",
+    accountNumber: "",
+    accountHolder: "",
+  });
+  const [withdrawForm, setWithdrawForm] = useState({ amount: "", note: "" });
   const [notices, setNotices] = useState([]);
 
   const logout = () => {
@@ -55,6 +64,17 @@ function RiderPage() {
     setEarnings(data);
   }, [earningsPeriod]);
 
+  const fetchSettings = useCallback(async () => {
+    const data = await orderService.getDriverSettings();
+    setSettings(data);
+    setSettingsForm({
+      phone: data.phone || "",
+      bankName: data.bankName || "",
+      accountNumber: data.accountNumber || "",
+      accountHolder: data.accountHolder || "",
+    });
+  }, []);
+
   const fetchNotices = useCallback(async () => {
     const data = await noticeService.getNotices();
     setNotices(data);
@@ -64,10 +84,39 @@ function RiderPage() {
   usePolling(fetchNotices, 7000);
   usePolling(fetchHistory, 7000, tab === "history");
   usePolling(fetchEarnings, 7000, tab === "earnings");
+  usePolling(fetchSettings, 7000, tab === "settings");
 
   const toggleOnline = async () => {
     const nextStatus = dashboard?.onlineStatus === "online" ? "offline" : "online";
     await orderService.updateDriverOnlineStatus({ onlineStatus: nextStatus });
+    fetchDashboard();
+    fetchSettings();
+  };
+
+  const toggleDispatch = async () => {
+    await orderService.updateDriverSettings({
+      dispatchEnabled: !settings?.dispatchEnabled,
+    });
+    fetchDashboard();
+    fetchSettings();
+  };
+
+  const saveSettings = async () => {
+    await orderService.updateDriverSettings(settingsForm);
+    fetchSettings();
+  };
+
+  const requestWithdrawal = async () => {
+    if (!withdrawForm.amount) {
+      alert("출금 금액을 입력하세요.");
+      return;
+    }
+    await orderService.requestDriverWithdrawal({
+      amount: Number(withdrawForm.amount),
+      note: withdrawForm.note,
+    });
+    setWithdrawForm({ amount: "", note: "" });
+    fetchSettings();
     fetchDashboard();
   };
 
@@ -79,6 +128,7 @@ function RiderPage() {
     fetchDashboard();
     fetchHistory();
     fetchEarnings();
+    fetchSettings();
   };
 
   const groupedHistory = useMemo(() => groupByDate(historyOrders), [historyOrders]);
@@ -87,7 +137,7 @@ function RiderPage() {
     <AppShell mobile>
       <Header
         title="라이더 센터"
-        subtitle="오늘 흐름, 수익, 메시지를 한 손 안에서 확인하세요"
+        subtitle="배차 요청, 진행중 배달, 수익과 출금까지 한 흐름으로 관리합니다"
         actionLabel="로그아웃"
         onAction={logout}
       />
@@ -104,29 +154,28 @@ function RiderPage() {
               <p>오늘 수익</p>
             </Card>
             <Card className="metric-card">
-              <h3>{dashboard?.currentStatus || "대기"}</h3>
+              <h3>{dashboard?.onlineStatus === "online" ? "온라인" : "오프라인"}</h3>
               <p>현재 상태</p>
             </Card>
             <Card className="metric-card">
-              <h3>{dashboard?.onlineStatus === "online" ? "온라인" : "오프라인"}</h3>
-              <p>배차 수신 상태</p>
+              <h3>{settings?.dispatchEnabled ? "ON" : "OFF"}</h3>
+              <p>배차 수신</p>
             </Card>
           </div>
 
           <Card>
-            <div className="section-heading">
-              <div>
-                <h3>근무 상태</h3>
-                <p>배차를 받기 전 온라인 상태를 먼저 전환하세요</p>
-              </div>
+            <div className="list-actions">
               <Button variant={dashboard?.onlineStatus === "online" ? "danger" : "primary"} onClick={toggleOnline}>
                 {dashboard?.onlineStatus === "online" ? "오프라인 전환" : "온라인 전환"}
+              </Button>
+              <Button variant={settings?.dispatchEnabled ? "primary" : "secondary"} onClick={toggleDispatch}>
+                배차 수신 {settings?.dispatchEnabled ? "끄기" : "켜기"}
               </Button>
             </div>
           </Card>
 
           <Card>
-            <h3>현재 배달</h3>
+            <h3>진행중 배달</h3>
             {dashboard?.currentOrder ? (
               <div className="panel-list">
                 <div>{dashboard.currentOrder.order_id}</div>
@@ -208,8 +257,8 @@ function RiderPage() {
               <p>총 수익</p>
             </Card>
             <Card className="mini-card metric-card">
-              <h3>{earnings?.totalDeliveries || 0}건</h3>
-              <p>완료 배달</p>
+              <h3>{formatCurrency(settings?.balance || 0)}</h3>
+              <p>출금 가능 잔액</p>
             </Card>
           </div>
           {earnings?.orders?.map((order) => (
@@ -218,6 +267,61 @@ function RiderPage() {
             </Card>
           ))}
         </Card>
+      )}
+
+      {tab === "settings" && (
+        <div className="page-stack">
+          <Card>
+            <div className="section-heading">
+              <h3>기사 설정</h3>
+              <Badge tone="secondary">{settings?.onlineStatus || "offline"}</Badge>
+            </div>
+            <div className="auth-form" style={{ marginTop: 16 }}>
+              <Input label="전화번호" value={settingsForm.phone} onChange={(event) => setSettingsForm((prev) => ({ ...prev, phone: event.target.value }))} />
+              <Input label="은행명" value={settingsForm.bankName} onChange={(event) => setSettingsForm((prev) => ({ ...prev, bankName: event.target.value }))} />
+              <Input label="계좌번호" value={settingsForm.accountNumber} onChange={(event) => setSettingsForm((prev) => ({ ...prev, accountNumber: event.target.value }))} />
+              <Input label="예금주" value={settingsForm.accountHolder} onChange={(event) => setSettingsForm((prev) => ({ ...prev, accountHolder: event.target.value }))} />
+              <div className="list-actions">
+                <Button variant={settings?.dispatchEnabled ? "primary" : "secondary"} onClick={toggleDispatch}>
+                  배차 수신 {settings?.dispatchEnabled ? "ON" : "OFF"}
+                </Button>
+                <Button variant={dashboard?.onlineStatus === "online" ? "danger" : "primary"} onClick={toggleOnline}>
+                  {dashboard?.onlineStatus === "online" ? "오프라인" : "온라인"}
+                </Button>
+              </div>
+              <Button block onClick={saveSettings}>설정 저장</Button>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="section-heading">
+              <h3>출금 요청</h3>
+              <Badge tone="success">{formatCurrency(settings?.balance || 0)}</Badge>
+            </div>
+            <div className="auth-form" style={{ marginTop: 16 }}>
+              <Input label="출금 금액" type="number" value={withdrawForm.amount} onChange={(event) => setWithdrawForm((prev) => ({ ...prev, amount: event.target.value }))} />
+              <Input label="메모" value={withdrawForm.note} onChange={(event) => setWithdrawForm((prev) => ({ ...prev, note: event.target.value }))} />
+              <Button block onClick={requestWithdrawal}>출금 요청</Button>
+            </div>
+          </Card>
+
+          <Card>
+            <h3>출금 요청 내역</h3>
+            {(settings?.withdrawalRequests || []).map((item) => (
+              <Card key={item._id} className="mini-card">
+                <div className="section-heading">
+                  <div>
+                    <strong>{formatCurrency(item.amount)}</strong>
+                    <p>{item.bankName} · {item.accountNumber}</p>
+                  </div>
+                  <Badge tone={item.status === "approved" ? "success" : item.status === "rejected" ? "danger" : "secondary"}>
+                    {item.status}
+                  </Badge>
+                </div>
+              </Card>
+            ))}
+          </Card>
+        </div>
       )}
 
       {tab === "messages" && (

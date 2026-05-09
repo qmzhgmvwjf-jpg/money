@@ -11,6 +11,7 @@ import DriversTab from "./admin/DriversTab";
 import CustomersTab from "./admin/CustomersTab";
 import NoticesTab from "./admin/NoticesTab";
 import RolesTab from "./admin/RolesTab";
+import FinanceTab from "./admin/FinanceTab";
 import { adminService } from "../services/adminService";
 
 const tabs = [
@@ -18,6 +19,7 @@ const tabs = [
   { key: "stores", label: "가맹점 관리" },
   { key: "drivers", label: "기사 관리" },
   { key: "customers", label: "고객 관리" },
+  { key: "finance", label: "돈 관리" },
   { key: "notices", label: "공지사항" },
   { key: "roles", label: "권한 관리" },
 ];
@@ -98,6 +100,7 @@ function AdminPage() {
       {activeTab === "stores" && <StoresTab />}
       {activeTab === "drivers" && <DriversTab />}
       {activeTab === "customers" && <CustomersTab />}
+      {activeTab === "finance" && <FinanceTab />}
       {activeTab === "notices" && <NoticesTab />}
       {activeTab === "roles" && <RolesTab />}
     </AppShell>

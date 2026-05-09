@@ -15,8 +15,9 @@ import { usePolling } from "../hooks/usePolling";
 const tabs = [
   { key: "orders", label: "주문", icon: "📦" },
   { key: "menus", label: "메뉴", icon: "🍽️" },
+  { key: "settings", label: "설정", icon: "⚙️" },
+  { key: "finance", label: "정산", icon: "💰" },
   { key: "messages", label: "메시지", icon: "💬" },
-  { key: "stats", label: "통계", icon: "📈" },
 ];
 
 const filters = [
@@ -34,9 +35,19 @@ function StorePage() {
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState(null);
   const [storeInfo, setStoreInfo] = useState(null);
+  const [finance, setFinance] = useState(null);
   const [notices, setNotices] = useState([]);
   const [menuForm, setMenuForm] = useState({ name: "", price: "" });
-  const [timeForm, setTimeForm] = useState({ openTime: "09:00", closeTime: "21:00" });
+  const [settingsForm, setSettingsForm] = useState({
+    name: "",
+    description: "",
+    phone: "",
+    minOrderAmount: 0,
+    deliveryFee: 3000,
+    openTime: "09:00",
+    closeTime: "21:00",
+  });
+  const [topupForm, setTopupForm] = useState({ amount: "", depositorName: "", note: "" });
   const [editingMenuId, setEditingMenuId] = useState(null);
 
   const logout = () => {
@@ -57,12 +68,20 @@ function StorePage() {
   const fetchStoreInfo = useCallback(async () => {
     const data = await orderService.getStoreMyInfo();
     setStoreInfo(data);
-    setTimeForm({
+    setSettingsForm({
+      name: data.name || "",
+      description: data.description || "",
+      phone: data.phone || "",
+      minOrderAmount: data.minOrderAmount || 0,
+      deliveryFee: data.deliveryFee || 0,
       openTime: data.openTime || "09:00",
       closeTime: data.closeTime || "21:00",
     });
-    localStorage.setItem("storeName", data.name || "");
-    localStorage.setItem("storeId", data._id || "");
+  }, []);
+
+  const fetchFinance = useCallback(async () => {
+    const data = await orderService.getStoreFinance();
+    setFinance(data);
   }, []);
 
   const fetchNotices = useCallback(async () => {
@@ -73,6 +92,7 @@ function StorePage() {
   usePolling(fetchOrders, 3000);
   usePolling(fetchStats, 5000);
   usePolling(fetchStoreInfo, 5000);
+  usePolling(fetchFinance, 7000);
   usePolling(fetchNotices, 7000);
 
   const orderAction = async (type, id) => {
@@ -82,62 +102,63 @@ function StorePage() {
     fetchOrders();
     fetchStats();
     fetchStoreInfo();
+    fetchFinance();
   };
 
-  const saveTime = async () => {
-    await orderService.setStoreTime(timeForm);
+  const saveSettings = async () => {
+    await orderService.updateStoreSettings({
+      ...settingsForm,
+      minOrderAmount: Number(settingsForm.minOrderAmount),
+      deliveryFee: Number(settingsForm.deliveryFee),
+    });
     fetchStoreInfo();
   };
 
-  const toggleOpen = async (nextOpen) => {
-    await orderService.toggleStoreOpen({ isOpen: nextOpen });
+  const toggleOpen = async () => {
+    await orderService.toggleStoreOpen({ isOpen: !storeInfo?.isOpen });
     fetchStoreInfo();
   };
 
-  const toggleAutoAccept = async (nextAutoAccept) => {
-    await orderService.toggleStoreAutoAccept({ autoAccept: nextAutoAccept });
+  const toggleAutoAccept = async () => {
+    await orderService.toggleStoreAutoAccept({ autoAccept: !storeInfo?.autoAccept });
     fetchStoreInfo();
   };
 
   const submitMenu = async () => {
-    if (!storeInfo?._id) {
-      alert("가게 정보를 불러오는 중입니다.");
-      return;
-    }
+    if (!storeInfo?._id) return;
     if (!menuForm.name || !menuForm.price) {
       alert("메뉴명과 가격을 입력하세요.");
       return;
     }
-
-    const payload = {
-      store_id: storeInfo._id,
-      name: menuForm.name,
-      price: Number(menuForm.price),
-    };
-
     if (editingMenuId) {
       await orderService.updateMenu(editingMenuId, {
-        name: payload.name,
-        price: payload.price,
+        name: menuForm.name,
+        price: Number(menuForm.price),
       });
     } else {
-      await orderService.createMenu(payload);
+      await orderService.createMenu({
+        store_id: storeInfo._id,
+        name: menuForm.name,
+        price: Number(menuForm.price),
+      });
     }
-
-    setMenuForm({ name: "", price: "" });
     setEditingMenuId(null);
+    setMenuForm({ name: "", price: "" });
     fetchStoreInfo();
   };
 
-  const startEditMenu = (menu) => {
-    setEditingMenuId(menu._id);
-    setMenuForm({ name: menu.name, price: String(menu.price) });
-    setTab("menus");
-  };
-
-  const removeMenu = async (menuId) => {
-    if (!window.confirm("메뉴를 삭제할까요?")) return;
-    await orderService.deleteMenu(menuId);
+  const requestTopup = async () => {
+    if (!topupForm.amount || !topupForm.depositorName) {
+      alert("충전 금액과 입금자명을 입력하세요.");
+      return;
+    }
+    await orderService.requestStoreTopup({
+      amount: Number(topupForm.amount),
+      depositorName: topupForm.depositorName,
+      note: topupForm.note,
+    });
+    setTopupForm({ amount: "", depositorName: "", note: "" });
+    fetchFinance();
     fetchStoreInfo();
   };
 
@@ -145,7 +166,7 @@ function StorePage() {
     <AppShell mobile>
       <Header
         title={storeInfo?.name || "가게 운영"}
-        subtitle="내 가게 정보, 영업 상태, 주문과 메뉴를 한 화면에서 관리합니다."
+        subtitle="주문 흐름은 간결하게, 설정과 정산은 별도 화면처럼 분리했습니다."
         actionLabel="로그아웃"
         onAction={logout}
       />
@@ -153,72 +174,21 @@ function StorePage() {
       <div className="dashboard-grid">
         <Card className="metric-card">
           <h3>{storeInfo?.currentOrderCount || 0}건</h3>
-          <p>현재 진행 주문</p>
+          <p>현재 주문</p>
         </Card>
         <Card className="metric-card">
-          <h3>{storeInfo?.currentlyOpen ? "영업중" : "주문불가"}</h3>
+          <h3>{stats?.completedOrders || 0}건</h3>
+          <p>완료 주문</p>
+        </Card>
+        <Card className="metric-card">
+          <h3>{formatCurrency(finance?.pendingSettlement || 0)}</h3>
+          <p>정산 예정액</p>
+        </Card>
+        <Card className="metric-card">
+          <h3>{storeInfo?.currentlyOpen ? "영업중" : "중지"}</h3>
           <p>현재 영업 상태</p>
         </Card>
-        <Card className="metric-card">
-          <h3>{storeInfo?.autoAccept ? "ON" : "OFF"}</h3>
-          <p>주문 자동 수락</p>
-        </Card>
       </div>
-
-      <Card>
-        <div className="section-heading">
-          <div>
-            <h3>내 가게 정보</h3>
-            <p>
-              영업시간 {storeInfo?.openTime || "-"} - {storeInfo?.closeTime || "-"} ·
-              승인 {storeInfo?.approved ? "완료" : "대기"}
-            </p>
-          </div>
-          <div className="status-row">
-            <Badge tone={storeInfo?.currentlyOpen ? "success" : "secondary"}>
-              {storeInfo?.currentlyOpen ? "현재 주문 가능" : "영업 종료"}
-            </Badge>
-            <Badge tone={storeInfo?.isOpen ? "primary" : "secondary"}>
-              {storeInfo?.isOpen ? "수동 영업 ON" : "일시 중지"}
-            </Badge>
-          </div>
-        </div>
-        <div className="list-actions" style={{ marginTop: 16 }}>
-          <Button
-            variant={storeInfo?.isOpen ? "secondary" : "primary"}
-            onClick={() => toggleOpen(!storeInfo?.isOpen)}
-          >
-            {storeInfo?.isOpen ? "일시 영업중지" : "영업 재개"}
-          </Button>
-          <Button
-            variant={storeInfo?.autoAccept ? "primary" : "secondary"}
-            onClick={() => toggleAutoAccept(!storeInfo?.autoAccept)}
-          >
-            자동 수락 {storeInfo?.autoAccept ? "끄기" : "켜기"}
-          </Button>
-        </div>
-        <div className="two-column-grid" style={{ marginTop: 16 }}>
-          <Input
-            label="오픈 시간"
-            type="time"
-            value={timeForm.openTime}
-            onChange={(event) =>
-              setTimeForm((prev) => ({ ...prev, openTime: event.target.value }))
-            }
-          />
-          <Input
-            label="마감 시간"
-            type="time"
-            value={timeForm.closeTime}
-            onChange={(event) =>
-              setTimeForm((prev) => ({ ...prev, closeTime: event.target.value }))
-            }
-          />
-        </div>
-        <div className="list-actions" style={{ marginTop: 16 }}>
-          <Button onClick={saveTime}>영업시간 저장</Button>
-        </div>
-      </Card>
 
       {tab === "orders" && (
         <>
@@ -252,7 +222,8 @@ function StorePage() {
                   <p><strong>주소</strong> {order.address || "-"}</p>
                 </div>
                 <div>
-                  <p><strong>총 금액</strong> {formatCurrency(order.total_price)}</p>
+                  <p><strong>금액</strong> {formatCurrency(order.total_price)}</p>
+                  <p><strong>결제</strong> {order.payment_method || "-"}</p>
                   <p><strong>기사</strong> {order.driver_id || "-"}</p>
                 </div>
               </div>
@@ -279,51 +250,27 @@ function StorePage() {
               </div>
             </Card>
           ))}
-
-          {orders.length === 0 && (
-            <Card>
-              <div className="empty-state">조건에 맞는 주문이 없습니다.</div>
-            </Card>
-          )}
         </>
       )}
 
       {tab === "menus" && (
-        <div className="panel-list">
+        <div className="page-stack">
           <Card>
             <div className="section-heading">
-              <div>
-                <h3>메뉴 관리</h3>
-                <p>내 가게에 귀속된 메뉴만 등록하고 수정할 수 있습니다.</p>
-              </div>
+              <h3>메뉴 관리</h3>
+              <p>메인 주문 화면과 분리된 전용 메뉴 관리 영역입니다.</p>
             </div>
             <div className="two-column-grid" style={{ marginTop: 16 }}>
-              <Input
-                label="메뉴명"
-                value={menuForm.name}
-                onChange={(event) =>
-                  setMenuForm((prev) => ({ ...prev, name: event.target.value }))
-                }
-              />
-              <Input
-                label="가격"
-                type="number"
-                value={menuForm.price}
-                onChange={(event) =>
-                  setMenuForm((prev) => ({ ...prev, price: event.target.value }))
-                }
-              />
+              <Input label="메뉴명" value={menuForm.name} onChange={(event) => setMenuForm((prev) => ({ ...prev, name: event.target.value }))} />
+              <Input label="가격" type="number" value={menuForm.price} onChange={(event) => setMenuForm((prev) => ({ ...prev, price: event.target.value }))} />
             </div>
             <div className="list-actions" style={{ marginTop: 16 }}>
               <Button onClick={submitMenu}>{editingMenuId ? "메뉴 수정" : "메뉴 추가"}</Button>
               {editingMenuId && (
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setEditingMenuId(null);
-                    setMenuForm({ name: "", price: "" });
-                  }}
-                >
+                <Button variant="secondary" onClick={() => {
+                  setEditingMenuId(null);
+                  setMenuForm({ name: "", price: "" });
+                }}>
                   수정 취소
                 </Button>
               )}
@@ -337,24 +284,109 @@ function StorePage() {
                   <strong>{menu.name}</strong>
                   <div>{formatCurrency(menu.price)}</div>
                 </div>
-                <Badge tone="secondary">{storeInfo?.name}</Badge>
-              </div>
-              <div className="list-actions">
-                <Button variant="secondary" onClick={() => startEditMenu(menu)}>
-                  수정
-                </Button>
-                <Button variant="danger" onClick={() => removeMenu(menu._id)}>
-                  삭제
-                </Button>
+                <div className="list-actions">
+                  <Button variant="secondary" onClick={() => {
+                    setEditingMenuId(menu._id);
+                    setMenuForm({ name: menu.name, price: String(menu.price) });
+                  }}>
+                    수정
+                  </Button>
+                  <Button variant="danger" onClick={async () => {
+                    await orderService.deleteMenu(menu._id);
+                    fetchStoreInfo();
+                  }}>
+                    삭제
+                  </Button>
+                </div>
               </div>
             </Card>
           ))}
+        </div>
+      )}
 
-          {storeInfo && (storeInfo.menus || []).length === 0 && (
-            <Card>
-              <div className="empty-state">등록된 메뉴가 없습니다.</div>
+      {tab === "settings" && (
+        <Card>
+          <div className="section-heading">
+            <h3>가게 설정</h3>
+            <Badge tone="secondary">{storeInfo?.approved ? "승인 완료" : "승인 대기"}</Badge>
+          </div>
+          <div className="auth-form" style={{ marginTop: 16 }}>
+            <Input label="가게명" value={settingsForm.name} onChange={(event) => setSettingsForm((prev) => ({ ...prev, name: event.target.value }))} />
+            <Input label="가게 소개" value={settingsForm.description} onChange={(event) => setSettingsForm((prev) => ({ ...prev, description: event.target.value }))} />
+            <Input label="전화번호" value={settingsForm.phone} onChange={(event) => setSettingsForm((prev) => ({ ...prev, phone: event.target.value }))} />
+            <Input label="최소주문금액" type="number" value={settingsForm.minOrderAmount} onChange={(event) => setSettingsForm((prev) => ({ ...prev, minOrderAmount: event.target.value }))} />
+            <Input label="배달비" type="number" value={settingsForm.deliveryFee} onChange={(event) => setSettingsForm((prev) => ({ ...prev, deliveryFee: event.target.value }))} />
+            <div className="two-column-grid">
+              <Input label="영업 시작" type="time" value={settingsForm.openTime} onChange={(event) => setSettingsForm((prev) => ({ ...prev, openTime: event.target.value }))} />
+              <Input label="영업 종료" type="time" value={settingsForm.closeTime} onChange={(event) => setSettingsForm((prev) => ({ ...prev, closeTime: event.target.value }))} />
+            </div>
+            <div className="list-actions">
+              <Button variant={storeInfo?.isOpen ? "secondary" : "primary"} onClick={toggleOpen}>
+                {storeInfo?.isOpen ? "영업 OFF" : "영업 ON"}
+              </Button>
+              <Button variant={storeInfo?.autoAccept ? "primary" : "secondary"} onClick={toggleAutoAccept}>
+                자동주문수락 {storeInfo?.autoAccept ? "ON" : "OFF"}
+              </Button>
+            </div>
+            <Button block onClick={saveSettings}>설정 저장</Button>
+          </div>
+        </Card>
+      )}
+
+      {tab === "finance" && (
+        <div className="page-stack">
+          <div className="dashboard-grid">
+            <Card className="metric-card">
+              <h3>{formatCurrency(finance?.balance || 0)}</h3>
+              <p>충전 잔액</p>
             </Card>
-          )}
+            <Card className="metric-card">
+              <h3>{formatCurrency(finance?.pendingSettlement || 0)}</h3>
+              <p>정산 예정액</p>
+            </Card>
+          </div>
+          <Card>
+            <div className="section-heading">
+              <h3>충전 요청</h3>
+              <p>관리자 계좌 입금 후 승인 요청을 남겨주세요.</p>
+            </div>
+            <div className="auth-form" style={{ marginTop: 16 }}>
+              <Input label="충전 금액" type="number" value={topupForm.amount} onChange={(event) => setTopupForm((prev) => ({ ...prev, amount: event.target.value }))} />
+              <Input label="입금자명" value={topupForm.depositorName} onChange={(event) => setTopupForm((prev) => ({ ...prev, depositorName: event.target.value }))} />
+              <Input label="메모" value={topupForm.note} onChange={(event) => setTopupForm((prev) => ({ ...prev, note: event.target.value }))} />
+              <Button block onClick={requestTopup}>충전 요청</Button>
+            </div>
+          </Card>
+          <Card>
+            <h3>최근 결제 내역</h3>
+            {(finance?.payments || []).map((payment) => (
+              <Card key={payment._id} className="mini-card">
+                <div className="section-heading">
+                  <div>
+                    <strong>{payment.order_id || payment.payment_id}</strong>
+                    <p>{payment.method} · {payment.status}</p>
+                  </div>
+                  <Badge tone="primary">{formatCurrency(payment.amount)}</Badge>
+                </div>
+              </Card>
+            ))}
+          </Card>
+          <Card>
+            <h3>충전 요청 내역</h3>
+            {(finance?.topupRequests || []).map((item) => (
+              <Card key={item._id} className="mini-card">
+                <div className="section-heading">
+                  <div>
+                    <strong>{formatCurrency(item.amount)}</strong>
+                    <p>{item.depositorName}</p>
+                  </div>
+                  <Badge tone={item.status === "approved" ? "success" : item.status === "rejected" ? "danger" : "secondary"}>
+                    {item.status}
+                  </Badge>
+                </div>
+              </Card>
+            ))}
+          </Card>
         </div>
       )}
 
@@ -389,38 +421,6 @@ function StorePage() {
             );
           })}
         </Card>
-      )}
-
-      {tab === "stats" && (
-        <>
-          <div className="dashboard-grid">
-            <Card className="metric-card">
-              <h3>{formatCurrency(stats?.todaySales || 0)}</h3>
-              <p>오늘 매출</p>
-            </Card>
-            <Card className="metric-card">
-              <h3>{formatCurrency(stats?.totalSales || 0)}</h3>
-              <p>누적 매출</p>
-            </Card>
-            <Card className="metric-card">
-              <h3>{stats?.totalOrders || 0}건</h3>
-              <p>전체 주문</p>
-            </Card>
-            <Card className="metric-card">
-              <h3>{stats?.cancelledOrders || 0}건</h3>
-              <p>취소 주문</p>
-            </Card>
-          </div>
-
-          <Card>
-            <h3>최근 주문 흐름</h3>
-            {stats?.orders?.map((order) => (
-              <Card key={order._id} className="mini-card">
-                {order.order_id} · {order.customer_name} · {formatCurrency(order.total_price)} · {order.status}
-              </Card>
-            ))}
-          </Card>
-        </>
       )}
 
       <BottomNavigation items={tabs} activeKey={tab} onChange={setTab} />

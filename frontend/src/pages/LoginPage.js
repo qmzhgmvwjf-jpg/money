@@ -31,6 +31,12 @@ function LoginPage() {
       if (data.storeName) localStorage.setItem("storeName", data.storeName);
       if (data.storeId) localStorage.setItem("storeId", data.storeId);
       if (data.onlineStatus) localStorage.setItem("onlineStatus", data.onlineStatus);
+      if (typeof data.dispatchEnabled !== "undefined") {
+        localStorage.setItem("dispatchEnabled", String(data.dispatchEnabled));
+      }
+      if (typeof data.balance !== "undefined") {
+        localStorage.setItem("balance", String(data.balance));
+      }
 
       if (data.role === "admin") navigate("/admin");
       else if (data.role === "driver") navigate("/rider");
