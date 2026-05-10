@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from routers import admin, auth, driver, menus, notices, orders, store
+from routers import admin, auth, driver, menus, orders, store
 from services.platform_service import ensure_default_admin
 
 app = FastAPI()
@@ -42,4 +42,3 @@ app.include_router(orders.router)
 app.include_router(admin.router)
 app.include_router(driver.router)
 app.include_router(store.router)
-app.include_router(notices.router)
