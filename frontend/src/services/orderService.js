@@ -29,6 +29,8 @@ export const orderService = {
     api.put("/store/toggle-auto-accept", payload).then((res) => res.data),
   getStoreFinance: () => api.get("/store/finance").then((res) => res.data),
   requestStoreTopup: (payload) => api.post("/store/topup-requests", payload).then((res) => res.data),
+  requestStoreWithdrawal: (payload) =>
+    api.post("/store/withdrawal-requests", payload).then((res) => res.data),
   createMenu: (payload) => api.post("/menus", payload).then((res) => res.data),
   updateMenu: (id, payload) => api.put(`/menus/${id}`, payload).then((res) => res.data),
   deleteMenu: (id) => api.delete(`/menus/${id}`),

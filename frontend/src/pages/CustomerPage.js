@@ -16,7 +16,6 @@ const navItems = [
   { key: "home", label: "홈", icon: "🏠" },
   { key: "search", label: "검색", icon: "🔎" },
   { key: "cart", label: "장바구니", icon: "🛒" },
-  { key: "orders", label: "주문내역", icon: "🧾" },
   { key: "profile", label: "마이", icon: "👤" },
 ];
 
@@ -47,10 +46,12 @@ function CustomerPage() {
     });
   }, [search, selectedCategory, stores]);
 
+  const recommendedStores = useMemo(() => filteredStores.slice(0, 3), [filteredStores]);
+
   const handleNav = (key) => {
-    if (key === "home" || key === "search") navigate("/customer");
+    if (key === "home") navigate("/customer");
+    if (key === "search") navigate("/customer/search");
     if (key === "cart") navigate("/customer/cart");
-    if (key === "orders") navigate("/customer/orders");
     if (key === "profile") navigate("/customer/profile");
   };
 
@@ -83,6 +84,16 @@ function CustomerPage() {
             onChange={(event) => setSearch(event.target.value)}
           />
 
+          <Card className="mini-card">
+            <div className="section-heading">
+              <div>
+                <strong>현재 배송 주소</strong>
+                <p>{localStorage.getItem("address") || "주소를 등록하면 더 빠르게 주문할 수 있어요"}</p>
+              </div>
+              <Badge tone="secondary">배송중</Badge>
+            </div>
+          </Card>
+
           <div className="chip-row">
             {categories.map((category) => (
               <Button
@@ -96,6 +107,34 @@ function CustomerPage() {
           </div>
         </div>
       </Card>
+
+      <div className="section-heading">
+        <h3>추천 가게</h3>
+        <p>지금 주문하기 좋은 가게를 먼저 보여드려요.</p>
+      </div>
+
+      <div className="store-list">
+        {recommendedStores.map((store) => (
+          <Card
+            key={`recommended-${store._id}`}
+            interactive={store.currentlyOpen}
+            className="store-card"
+            onClick={() => store.currentlyOpen && navigate(`/customer/store/${store._id}`)}
+          >
+            <div className="store-card__media" style={{ background: getStoreVisual(store.name) }} />
+            <div className="store-card__body">
+              <h3>{store.name}</h3>
+              <p>{store.description || "고객 평점이 높은 추천 가게"}</p>
+              <div className="status-row">
+                <Badge tone={store.currentlyOpen ? "success" : "secondary"}>
+                  {store.currentlyOpen ? "영업중" : "영업 종료"}
+                </Badge>
+                <Badge tone="secondary">배달비 {Number(store.deliveryFee || 0).toLocaleString()}원</Badge>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
 
       <div className="section-heading">
         <h3>가게 리스트</h3>
@@ -151,7 +190,7 @@ function CustomerPage() {
         )}
       </div>
 
-      <BottomNavigation items={navItems} activeKey={search ? "search" : "home"} onChange={handleNav} />
+      <BottomNavigation items={navItems} activeKey="home" onChange={handleNav} />
     </AppShell>
   );
 }

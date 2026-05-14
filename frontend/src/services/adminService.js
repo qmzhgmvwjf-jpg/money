@@ -25,10 +25,22 @@ export const adminService = {
     api
       .get(status ? `/admin/withdrawal-requests?status=${status}` : "/admin/withdrawal-requests")
       .then((res) => res.data),
+  getStoreWithdrawalRequests: (status) =>
+    api
+      .get(status ? `/admin/store-withdrawal-requests?status=${status}` : "/admin/store-withdrawal-requests")
+      .then((res) => res.data),
   approveWithdrawal: (id, payload = {}) =>
     api.post(`/admin/withdrawal-requests/${id}/approve`, payload).then((res) => res.data),
   rejectWithdrawal: (id, payload = {}) =>
     api.post(`/admin/withdrawal-requests/${id}/reject`, payload).then((res) => res.data),
+  approveStoreWithdrawal: (id, payload = {}) =>
+    api.post(`/admin/store-withdrawal-requests/${id}/approve`, payload).then((res) => res.data),
+  rejectStoreWithdrawal: (id, payload = {}) =>
+    api.post(`/admin/store-withdrawal-requests/${id}/reject`, payload).then((res) => res.data),
+  adjustStoreBalance: (id, payload) =>
+    api.post(`/admin/stores/${id}/adjust-balance`, payload).then((res) => res.data),
+  adjustDriverBalance: (id, payload) =>
+    api.post(`/admin/drivers/${id}/adjust-balance`, payload).then((res) => res.data),
   getTransactions: (limit = 100) =>
     api.get(`/admin/transactions?limit=${limit}`).then((res) => res.data),
 };

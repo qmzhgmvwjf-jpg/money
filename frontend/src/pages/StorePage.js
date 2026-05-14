@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../layouts/AppShell";
 import Header from "../components/common/Header";
@@ -13,42 +13,36 @@ import { formatCurrency, formatDateTime } from "../utils/format";
 import { usePolling } from "../hooks/usePolling";
 
 const tabs = [
-  { key: "orders", label: "주문", icon: "📦" },
+  { key: "home", label: "메인", icon: "🏪" },
   { key: "menus", label: "메뉴", icon: "🍽️" },
-  { key: "settings", label: "설정", icon: "⚙️" },
   { key: "finance", label: "정산", icon: "💰" },
-  { key: "messages", label: "메시지", icon: "💬" },
-];
-
-const filters = [
-  { value: "all", label: "전체" },
-  { value: "in_progress", label: "진행중" },
-  { value: "completed", label: "완료" },
-  { value: "cancelled", label: "취소" },
+  { key: "settings", label: "설정", icon: "⚙️" },
 ];
 
 function StorePage() {
   const navigate = useNavigate();
-  const username = localStorage.getItem("username");
-  const [tab, setTab] = useState("orders");
-  const [filter, setFilter] = useState("all");
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState(null);
   const [storeInfo, setStoreInfo] = useState(null);
   const [finance, setFinance] = useState(null);
-  const [notices, setNotices] = useState([]);
+  const [tab, setTab] = useState("home");
   const [menuForm, setMenuForm] = useState({ name: "", price: "" });
+  const [editingMenuId, setEditingMenuId] = useState(null);
   const [settingsForm, setSettingsForm] = useState({
     name: "",
     description: "",
     phone: "",
     minOrderAmount: 0,
-    deliveryFee: 3000,
+    deliveryFee: 0,
+    bankName: "",
+    accountNumber: "",
+    accountHolder: "",
     openTime: "09:00",
     closeTime: "21:00",
   });
   const [topupForm, setTopupForm] = useState({ amount: "", depositorName: "", note: "" });
-  const [editingMenuId, setEditingMenuId] = useState(null);
+  const [withdrawForm, setWithdrawForm] = useState({ amount: "", note: "" });
+  const [notices, setNotices] = useState([]);
 
   const logout = () => {
     localStorage.clear();
@@ -56,9 +50,9 @@ function StorePage() {
   };
 
   const fetchOrders = useCallback(async () => {
-    const data = await orderService.getStoreOrders(filter);
+    const data = await orderService.getStoreOrders("all");
     setOrders(data);
-  }, [filter]);
+  }, []);
 
   const fetchStats = useCallback(async () => {
     const data = await orderService.getStoreStats();
@@ -74,6 +68,9 @@ function StorePage() {
       phone: data.phone || "",
       minOrderAmount: data.minOrderAmount || 0,
       deliveryFee: data.deliveryFee || 0,
+      bankName: data.bankName || "",
+      accountNumber: data.accountNumber || "",
+      accountHolder: data.accountHolder || "",
       openTime: data.openTime || "09:00",
       closeTime: data.closeTime || "21:00",
     });
@@ -95,13 +92,25 @@ function StorePage() {
   usePolling(fetchFinance, 7000);
   usePolling(fetchNotices, 7000);
 
+  const currentOrders = useMemo(
+    () => orders.filter((order) => order.status === "pending"),
+    [orders]
+  );
+  const inProgressOrders = useMemo(
+    () => orders.filter((order) => ["accepted", "dispatch_ready", "assigned", "delivering"].includes(order.status)),
+    [orders]
+  );
+  const completedOrders = useMemo(
+    () => orders.filter((order) => ["completed", "cancelled"].includes(order.status)),
+    [orders]
+  );
+
   const orderAction = async (type, id) => {
     if (type === "accept") await orderService.storeAccept(id);
     if (type === "reject") await orderService.storeReject(id);
     if (type === "dispatch") await orderService.requestDispatch(id);
     fetchOrders();
     fetchStats();
-    fetchStoreInfo();
     fetchFinance();
   };
 
@@ -119,11 +128,6 @@ function StorePage() {
     fetchStoreInfo();
   };
 
-  const toggleAutoAccept = async () => {
-    await orderService.toggleStoreAutoAccept({ autoAccept: !storeInfo?.autoAccept });
-    fetchStoreInfo();
-  };
-
   const submitMenu = async () => {
     if (!storeInfo?._id) return;
     if (!menuForm.name || !menuForm.price) {
@@ -131,10 +135,7 @@ function StorePage() {
       return;
     }
     if (editingMenuId) {
-      await orderService.updateMenu(editingMenuId, {
-        name: menuForm.name,
-        price: Number(menuForm.price),
-      });
+      await orderService.updateMenu(editingMenuId, { name: menuForm.name, price: Number(menuForm.price) });
     } else {
       await orderService.createMenu({
         store_id: storeInfo._id,
@@ -142,16 +143,12 @@ function StorePage() {
         price: Number(menuForm.price),
       });
     }
-    setEditingMenuId(null);
     setMenuForm({ name: "", price: "" });
+    setEditingMenuId(null);
     fetchStoreInfo();
   };
 
   const requestTopup = async () => {
-    if (!topupForm.amount || !topupForm.depositorName) {
-      alert("충전 금액과 입금자명을 입력하세요.");
-      return;
-    }
     await orderService.requestStoreTopup({
       amount: Number(topupForm.amount),
       depositorName: topupForm.depositorName,
@@ -159,98 +156,112 @@ function StorePage() {
     });
     setTopupForm({ amount: "", depositorName: "", note: "" });
     fetchFinance();
-    fetchStoreInfo();
   };
+
+  const requestWithdrawal = async () => {
+    await orderService.requestStoreWithdrawal({
+      amount: Number(withdrawForm.amount),
+      note: withdrawForm.note,
+    });
+    setWithdrawForm({ amount: "", note: "" });
+    fetchFinance();
+  };
+
+  const renderOrderCard = (order) => (
+    <Card key={order._id} className="mini-card">
+      <div className="section-heading">
+        <div>
+          <strong>{order.order_id}</strong>
+          <p>{order.customer_name} · {formatDateTime(order.created_at)}</p>
+        </div>
+        <Badge status={order.status}>{order.status}</Badge>
+      </div>
+      <p>{order.address}</p>
+      <p>{formatCurrency(order.total_price)}</p>
+      <div className="list-actions" style={{ marginTop: 12 }}>
+        {order.status === "pending" && (
+          <>
+            <Button onClick={() => orderAction("accept", order._id)}>수락</Button>
+            <Button variant="danger" onClick={() => orderAction("reject", order._id)}>거절</Button>
+          </>
+        )}
+        {order.status === "accepted" && (
+          <Button onClick={() => orderAction("dispatch", order._id)}>배차 요청</Button>
+        )}
+      </div>
+    </Card>
+  );
 
   return (
     <AppShell mobile>
       <Header
         title={storeInfo?.name || "가게 운영"}
-        subtitle="주문 흐름은 간결하게, 설정과 정산은 별도 화면처럼 분리했습니다."
+        subtitle="주문은 간결하게, 설정과 정산은 분리해서 운영할 수 있게 정리했습니다"
         actionLabel="로그아웃"
         onAction={logout}
       />
 
       <div className="dashboard-grid">
         <Card className="metric-card">
-          <h3>{storeInfo?.currentOrderCount || 0}건</h3>
+          <h3>{currentOrders.length}건</h3>
           <p>현재 주문</p>
         </Card>
         <Card className="metric-card">
-          <h3>{stats?.completedOrders || 0}건</h3>
+          <h3>{inProgressOrders.length}건</h3>
+          <p>진행중 주문</p>
+        </Card>
+        <Card className="metric-card">
+          <h3>{completedOrders.length}건</h3>
           <p>완료 주문</p>
         </Card>
         <Card className="metric-card">
-          <h3>{formatCurrency(finance?.pendingSettlement || 0)}</h3>
-          <p>정산 예정액</p>
-        </Card>
-        <Card className="metric-card">
-          <h3>{storeInfo?.currentlyOpen ? "영업중" : "중지"}</h3>
-          <p>현재 영업 상태</p>
+          <h3>{formatCurrency(finance?.balance || 0)}</h3>
+          <p>현재 잔액</p>
         </Card>
       </div>
 
-      {tab === "orders" && (
-        <>
+      {tab === "home" && (
+        <div className="page-stack">
           <Card>
-            <div className="chip-row">
-              {filters.map((item) => (
-                <Button
-                  key={item.value}
-                  variant={filter === item.value ? "primary" : "secondary"}
-                  onClick={() => setFilter(item.value)}
-                >
-                  {item.label}
-                </Button>
-              ))}
+            <div className="section-heading">
+              <div>
+                <h3>현재 주문</h3>
+                <p>즉시 처리할 주문만 먼저 모아봤어요.</p>
+              </div>
+              <Badge tone="primary">{currentOrders.length}건</Badge>
             </div>
+            {currentOrders.length === 0 ? <div className="empty-state">현재 주문이 없습니다.</div> : currentOrders.map(renderOrderCard)}
           </Card>
 
-          {orders.map((order) => (
-            <Card key={order._id}>
-              <div className="section-heading">
-                <div>
-                  <h3>{order.order_id}</h3>
-                  <p>{formatDateTime(order.created_at)}</p>
-                </div>
-                <Badge status={order.status}>{order.status}</Badge>
-              </div>
-              <div className="two-column-grid" style={{ marginTop: 16 }}>
-                <div>
-                  <p><strong>고객명</strong> {order.customer_name || "-"}</p>
-                  <p><strong>전화번호</strong> {order.phone || "-"}</p>
-                  <p><strong>주소</strong> {order.address || "-"}</p>
-                </div>
-                <div>
-                  <p><strong>금액</strong> {formatCurrency(order.total_price)}</p>
-                  <p><strong>결제</strong> {order.payment_method || "-"}</p>
-                  <p><strong>기사</strong> {order.driver_id || "-"}</p>
-                </div>
-              </div>
-              <Card className="mini-card" style={{ marginTop: 16 }}>
-                <strong>주문 메뉴</strong>
-                {order.items?.map((item, index) => (
-                  <div key={index}>
-                    {item.name} - {formatCurrency(item.price)}
-                  </div>
-                ))}
+          <Card>
+            <div className="section-heading">
+              <h3>진행중 주문</h3>
+              <Badge tone="secondary">{inProgressOrders.length}건</Badge>
+            </div>
+            {inProgressOrders.length === 0 ? <div className="empty-state">진행중 주문이 없습니다.</div> : inProgressOrders.map(renderOrderCard)}
+          </Card>
+
+          <Card>
+            <div className="section-heading">
+              <h3>완료 주문</h3>
+              <Badge tone="secondary">{completedOrders.length}건</Badge>
+            </div>
+            {completedOrders.length === 0 ? <div className="empty-state">완료 주문이 없습니다.</div> : completedOrders.slice(0, 10).map(renderOrderCard)}
+          </Card>
+
+          <Card>
+            <div className="section-heading">
+              <h3>운영 메시지</h3>
+              <Badge tone="primary">{notices.length}건</Badge>
+            </div>
+            {notices.slice(0, 3).map((notice) => (
+              <Card key={notice._id} className="mini-card">
+                <strong>{notice.title}</strong>
+                <p>{notice.content}</p>
               </Card>
-              <div className="list-actions" style={{ marginTop: 16 }}>
-                {order.status === "pending" && (
-                  <>
-                    <Button onClick={() => orderAction("accept", order._id)}>주문 수락</Button>
-                    <Button variant="danger" onClick={() => orderAction("reject", order._id)}>
-                      주문 거절
-                    </Button>
-                  </>
-                )}
-                {order.status === "accepted" && (
-                  <Button onClick={() => orderAction("dispatch", order._id)}>배차 요청</Button>
-                )}
-              </div>
-            </Card>
-          ))}
-        </>
+            ))}
+          </Card>
+        </div>
       )}
 
       {tab === "menus" && (
@@ -258,7 +269,7 @@ function StorePage() {
           <Card>
             <div className="section-heading">
               <h3>메뉴 관리</h3>
-              <p>메인 주문 화면과 분리된 전용 메뉴 관리 영역입니다.</p>
+              <p>메뉴 추가/수정/삭제를 이 페이지에서만 관리합니다.</p>
             </div>
             <div className="two-column-grid" style={{ marginTop: 16 }}>
               <Input label="메뉴명" value={menuForm.name} onChange={(event) => setMenuForm((prev) => ({ ...prev, name: event.target.value }))} />
@@ -266,17 +277,8 @@ function StorePage() {
             </div>
             <div className="list-actions" style={{ marginTop: 16 }}>
               <Button onClick={submitMenu}>{editingMenuId ? "메뉴 수정" : "메뉴 추가"}</Button>
-              {editingMenuId && (
-                <Button variant="secondary" onClick={() => {
-                  setEditingMenuId(null);
-                  setMenuForm({ name: "", price: "" });
-                }}>
-                  수정 취소
-                </Button>
-              )}
             </div>
           </Card>
-
           {(storeInfo?.menus || []).map((menu) => (
             <Card key={menu._id} className="menu-item">
               <div className="menu-item__meta">
@@ -304,18 +306,78 @@ function StorePage() {
         </div>
       )}
 
+      {tab === "finance" && (
+        <div className="page-stack">
+          <div className="dashboard-grid">
+            <Card className="metric-card">
+              <h3>{formatCurrency(finance?.balance || 0)}</h3>
+              <p>현재 잔액</p>
+            </Card>
+            <Card className="metric-card">
+              <h3>{formatCurrency(stats?.totalSales || 0)}</h3>
+              <p>총 매출</p>
+            </Card>
+          </div>
+
+          <Card>
+            <div className="section-heading">
+              <h3>입금 요청</h3>
+              <p>관리자 계좌 입금 후 충전을 요청할 수 있어요.</p>
+            </div>
+            <div className="auth-form" style={{ marginTop: 16 }}>
+              <Input label="입금 금액" type="number" value={topupForm.amount} onChange={(event) => setTopupForm((prev) => ({ ...prev, amount: event.target.value }))} />
+              <Input label="입금자명" value={topupForm.depositorName} onChange={(event) => setTopupForm((prev) => ({ ...prev, depositorName: event.target.value }))} />
+              <Input label="메모" value={topupForm.note} onChange={(event) => setTopupForm((prev) => ({ ...prev, note: event.target.value }))} />
+              <Button block onClick={requestTopup}>입금 요청</Button>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="section-heading">
+              <h3>출금 요청</h3>
+              <p>설정에 등록한 계좌로 정산 출금을 요청할 수 있어요.</p>
+            </div>
+            <div className="auth-form" style={{ marginTop: 16 }}>
+              <Input label="출금 금액" type="number" value={withdrawForm.amount} onChange={(event) => setWithdrawForm((prev) => ({ ...prev, amount: event.target.value }))} />
+              <Input label="메모" value={withdrawForm.note} onChange={(event) => setWithdrawForm((prev) => ({ ...prev, note: event.target.value }))} />
+              <Button block onClick={requestWithdrawal}>출금 요청</Button>
+            </div>
+          </Card>
+
+          <Card>
+            <h3>거래 내역</h3>
+            {(finance?.transactions || []).map((item) => (
+              <Card key={item._id} className="mini-card">
+                <div className="section-heading">
+                  <div>
+                    <strong>{item.type}</strong>
+                    <p>{item.description}</p>
+                  </div>
+                  <Badge tone="secondary">{formatCurrency(item.amount)}</Badge>
+                </div>
+              </Card>
+            ))}
+          </Card>
+        </div>
+      )}
+
       {tab === "settings" && (
         <Card>
           <div className="section-heading">
             <h3>가게 설정</h3>
-            <Badge tone="secondary">{storeInfo?.approved ? "승인 완료" : "승인 대기"}</Badge>
+            <Badge tone={storeInfo?.currentlyOpen ? "success" : "secondary"}>
+              {storeInfo?.currentlyOpen ? "영업중" : "영업중지"}
+            </Badge>
           </div>
           <div className="auth-form" style={{ marginTop: 16 }}>
             <Input label="가게명" value={settingsForm.name} onChange={(event) => setSettingsForm((prev) => ({ ...prev, name: event.target.value }))} />
-            <Input label="가게 소개" value={settingsForm.description} onChange={(event) => setSettingsForm((prev) => ({ ...prev, description: event.target.value }))} />
+            <Input label="가게 정보" value={settingsForm.description} onChange={(event) => setSettingsForm((prev) => ({ ...prev, description: event.target.value }))} />
             <Input label="전화번호" value={settingsForm.phone} onChange={(event) => setSettingsForm((prev) => ({ ...prev, phone: event.target.value }))} />
             <Input label="최소주문금액" type="number" value={settingsForm.minOrderAmount} onChange={(event) => setSettingsForm((prev) => ({ ...prev, minOrderAmount: event.target.value }))} />
             <Input label="배달비" type="number" value={settingsForm.deliveryFee} onChange={(event) => setSettingsForm((prev) => ({ ...prev, deliveryFee: event.target.value }))} />
+            <Input label="은행명" value={settingsForm.bankName} onChange={(event) => setSettingsForm((prev) => ({ ...prev, bankName: event.target.value }))} />
+            <Input label="계좌번호" value={settingsForm.accountNumber} onChange={(event) => setSettingsForm((prev) => ({ ...prev, accountNumber: event.target.value }))} />
+            <Input label="예금주" value={settingsForm.accountHolder} onChange={(event) => setSettingsForm((prev) => ({ ...prev, accountHolder: event.target.value }))} />
             <div className="two-column-grid">
               <Input label="영업 시작" type="time" value={settingsForm.openTime} onChange={(event) => setSettingsForm((prev) => ({ ...prev, openTime: event.target.value }))} />
               <Input label="영업 종료" type="time" value={settingsForm.closeTime} onChange={(event) => setSettingsForm((prev) => ({ ...prev, closeTime: event.target.value }))} />
@@ -324,102 +386,15 @@ function StorePage() {
               <Button variant={storeInfo?.isOpen ? "secondary" : "primary"} onClick={toggleOpen}>
                 {storeInfo?.isOpen ? "영업 OFF" : "영업 ON"}
               </Button>
-              <Button variant={storeInfo?.autoAccept ? "primary" : "secondary"} onClick={toggleAutoAccept}>
-                자동주문수락 {storeInfo?.autoAccept ? "ON" : "OFF"}
+              <Button variant={storeInfo?.autoAccept ? "primary" : "secondary"} onClick={async () => {
+                await orderService.toggleStoreAutoAccept({ autoAccept: !storeInfo?.autoAccept });
+                fetchStoreInfo();
+              }}>
+                자동수락 {storeInfo?.autoAccept ? "ON" : "OFF"}
               </Button>
             </div>
             <Button block onClick={saveSettings}>설정 저장</Button>
           </div>
-        </Card>
-      )}
-
-      {tab === "finance" && (
-        <div className="page-stack">
-          <div className="dashboard-grid">
-            <Card className="metric-card">
-              <h3>{formatCurrency(finance?.balance || 0)}</h3>
-              <p>충전 잔액</p>
-            </Card>
-            <Card className="metric-card">
-              <h3>{formatCurrency(finance?.pendingSettlement || 0)}</h3>
-              <p>정산 예정액</p>
-            </Card>
-          </div>
-          <Card>
-            <div className="section-heading">
-              <h3>충전 요청</h3>
-              <p>관리자 계좌 입금 후 승인 요청을 남겨주세요.</p>
-            </div>
-            <div className="auth-form" style={{ marginTop: 16 }}>
-              <Input label="충전 금액" type="number" value={topupForm.amount} onChange={(event) => setTopupForm((prev) => ({ ...prev, amount: event.target.value }))} />
-              <Input label="입금자명" value={topupForm.depositorName} onChange={(event) => setTopupForm((prev) => ({ ...prev, depositorName: event.target.value }))} />
-              <Input label="메모" value={topupForm.note} onChange={(event) => setTopupForm((prev) => ({ ...prev, note: event.target.value }))} />
-              <Button block onClick={requestTopup}>충전 요청</Button>
-            </div>
-          </Card>
-          <Card>
-            <h3>최근 결제 내역</h3>
-            {(finance?.payments || []).map((payment) => (
-              <Card key={payment._id} className="mini-card">
-                <div className="section-heading">
-                  <div>
-                    <strong>{payment.order_id || payment.payment_id}</strong>
-                    <p>{payment.method} · {payment.status}</p>
-                  </div>
-                  <Badge tone="primary">{formatCurrency(payment.amount)}</Badge>
-                </div>
-              </Card>
-            ))}
-          </Card>
-          <Card>
-            <h3>충전 요청 내역</h3>
-            {(finance?.topupRequests || []).map((item) => (
-              <Card key={item._id} className="mini-card">
-                <div className="section-heading">
-                  <div>
-                    <strong>{formatCurrency(item.amount)}</strong>
-                    <p>{item.depositorName}</p>
-                  </div>
-                  <Badge tone={item.status === "approved" ? "success" : item.status === "rejected" ? "danger" : "secondary"}>
-                    {item.status}
-                  </Badge>
-                </div>
-              </Card>
-            ))}
-          </Card>
-        </div>
-      )}
-
-      {tab === "messages" && (
-        <Card>
-          <h3>메시지함</h3>
-          {notices.map((notice) => {
-            const isRead = notice.read_by?.includes(username);
-            return (
-              <Card key={notice._id} className="mini-card">
-                <div className="section-heading">
-                  <div>
-                    <strong>{notice.title}</strong>
-                    <p>{notice.content}</p>
-                  </div>
-                  <Badge tone={isRead ? "secondary" : "primary"}>
-                    {isRead ? "읽음" : "새 공지"}
-                  </Badge>
-                </div>
-                {!isRead && (
-                  <Button
-                    variant="secondary"
-                    onClick={async () => {
-                      await noticeService.readNotice(notice._id);
-                      fetchNotices();
-                    }}
-                  >
-                    읽음 처리
-                  </Button>
-                )}
-              </Card>
-            );
-          })}
         </Card>
       )}
 

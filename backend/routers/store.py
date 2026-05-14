@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, Query
 
-from core.security import require_roles
-from services.platform_service import (
+from backend.core.security import require_roles
+from backend.services.platform_service import (
     StoreSettingsUpdate,
     StoreTopupRequestCreate,
+    StoreWithdrawalRequestCreate,
     StoreTimeUpdate,
     ToggleAutoAcceptPayload,
     ToggleOpenPayload,
@@ -13,6 +14,7 @@ from services.platform_service import (
     get_store_orders,
     get_store_stats,
     request_store_topup,
+    request_store_withdrawal,
     set_store_time,
     toggle_store_auto_accept,
     toggle_store_open,
@@ -73,3 +75,8 @@ def store_finance(user=Depends(require_roles(["store"]))):
 @router.post("/store/topup-requests")
 def store_topup_request(data: StoreTopupRequestCreate, user=Depends(require_roles(["store"]))):
     return request_store_topup(user, data)
+
+
+@router.post("/store/withdrawal-requests")
+def store_withdrawal_request(data: StoreWithdrawalRequestCreate, user=Depends(require_roles(["store"]))):
+    return request_store_withdrawal(user, data)

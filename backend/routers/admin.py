@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, Query
 
-from core.security import require_roles
-from services.platform_service import (
+from backend.core.security import require_roles
+from backend.services.platform_service import (
     AdminDecisionPayload,
+    BalanceAdjustPayload,
     CustomerUpdate,
     DriverUpdate,
     StoreCreate,
@@ -10,6 +11,9 @@ from services.platform_service import (
     UserCreate,
     approve_topup_request,
     approve_withdrawal_request,
+    approve_store_withdrawal_request,
+    adjust_driver_balance,
+    adjust_store_balance,
     create_driver,
     create_store,
     delete_driver,
@@ -20,11 +24,13 @@ from services.platform_service import (
     get_customers,
     get_drivers,
     get_stats,
+    get_store_withdrawal_requests,
     get_topup_requests,
     get_transactions,
     get_withdrawal_requests,
     reject_topup_request,
     reject_withdrawal_request,
+    reject_store_withdrawal_request,
     update_customer,
     update_driver,
     update_store,
@@ -118,6 +124,11 @@ def withdrawal_requests(status: str | None = Query(default=None), user=Depends(r
     return get_withdrawal_requests(status)
 
 
+@router.get("/admin/store-withdrawal-requests")
+def store_withdrawal_requests(status: str | None = Query(default=None), user=Depends(require_roles(["admin"]))):
+    return get_store_withdrawal_requests(status)
+
+
 @router.post("/admin/withdrawal-requests/{request_id}/approve")
 def approve_withdrawal(request_id: str, data: AdminDecisionPayload, user=Depends(require_roles(["admin"]))):
     return approve_withdrawal_request(request_id, user["username"], data.note)
@@ -126,6 +137,26 @@ def approve_withdrawal(request_id: str, data: AdminDecisionPayload, user=Depends
 @router.post("/admin/withdrawal-requests/{request_id}/reject")
 def reject_withdrawal(request_id: str, data: AdminDecisionPayload, user=Depends(require_roles(["admin"]))):
     return reject_withdrawal_request(request_id, user["username"], data.note)
+
+
+@router.post("/admin/store-withdrawal-requests/{request_id}/approve")
+def approve_store_withdrawal(request_id: str, data: AdminDecisionPayload, user=Depends(require_roles(["admin"]))):
+    return approve_store_withdrawal_request(request_id, user["username"], data.note)
+
+
+@router.post("/admin/store-withdrawal-requests/{request_id}/reject")
+def reject_store_withdrawal(request_id: str, data: AdminDecisionPayload, user=Depends(require_roles(["admin"]))):
+    return reject_store_withdrawal_request(request_id, user["username"], data.note)
+
+
+@router.post("/admin/stores/{store_id}/adjust-balance")
+def admin_adjust_store_balance(store_id: str, data: BalanceAdjustPayload, user=Depends(require_roles(["admin"]))):
+    return adjust_store_balance(store_id, data.amount, user["username"], data.note)
+
+
+@router.post("/admin/drivers/{driver_id}/adjust-balance")
+def admin_adjust_driver_balance(driver_id: str, data: BalanceAdjustPayload, user=Depends(require_roles(["admin"]))):
+    return adjust_driver_balance(driver_id, data.amount, user["username"], data.note)
 
 
 @router.get("/admin/transactions")
