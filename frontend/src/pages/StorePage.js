@@ -6,11 +6,14 @@ import Card from "../components/ui/Card";
 import Input from "../components/ui/Input";
 import Button from "../components/ui/Button";
 import Badge from "../components/ui/Badge";
+import LoadingState from "../components/ui/LoadingState";
+import EmptyState from "../components/ui/EmptyState";
 import BottomNavigation from "../components/navigation/BottomNavigation";
 import { orderService } from "../services/orderService";
 import { noticeService } from "../services/noticeService";
 import { formatCurrency, formatDateTime } from "../utils/format";
 import { usePolling } from "../hooks/usePolling";
+import { useToast } from "../hooks/useToast";
 
 const tabs = [
   { key: "home", label: "메인", icon: "🏪" },
@@ -43,6 +46,8 @@ function StorePage() {
   const [topupForm, setTopupForm] = useState({ amount: "", depositorName: "", note: "" });
   const [withdrawForm, setWithdrawForm] = useState({ amount: "", note: "" });
   const [notices, setNotices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { showToast, ToastViewport } = useToast();
 
   const logout = () => {
     localStorage.clear();
@@ -50,8 +55,12 @@ function StorePage() {
   };
 
   const fetchOrders = useCallback(async () => {
-    const data = await orderService.getStoreOrders("all");
-    setOrders(data);
+    try {
+      const data = await orderService.getStoreOrders("all");
+      setOrders(data);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const fetchStats = useCallback(async () => {
@@ -109,6 +118,7 @@ function StorePage() {
     if (type === "accept") await orderService.storeAccept(id);
     if (type === "reject") await orderService.storeReject(id);
     if (type === "dispatch") await orderService.requestDispatch(id);
+    showToast(type === "reject" ? "주문을 거절했습니다" : "요청이 처리되었습니다", type === "reject" ? "danger" : "success");
     fetchOrders();
     fetchStats();
     fetchFinance();
@@ -120,18 +130,20 @@ function StorePage() {
       minOrderAmount: Number(settingsForm.minOrderAmount),
       deliveryFee: Number(settingsForm.deliveryFee),
     });
+    showToast("가게 설정을 저장했습니다", "success");
     fetchStoreInfo();
   };
 
   const toggleOpen = async () => {
     await orderService.toggleStoreOpen({ isOpen: !storeInfo?.isOpen });
+    showToast(storeInfo?.isOpen ? "영업을 중지했습니다" : "영업을 시작했습니다", "success");
     fetchStoreInfo();
   };
 
   const submitMenu = async () => {
     if (!storeInfo?._id) return;
     if (!menuForm.name || !menuForm.price) {
-      alert("메뉴명과 가격을 입력하세요.");
+      showToast("메뉴명과 가격을 입력하세요", "danger");
       return;
     }
     if (editingMenuId) {
@@ -145,6 +157,7 @@ function StorePage() {
     }
     setMenuForm({ name: "", price: "" });
     setEditingMenuId(null);
+    showToast(editingMenuId ? "메뉴를 수정했습니다" : "메뉴를 추가했습니다", "success");
     fetchStoreInfo();
   };
 
@@ -155,6 +168,7 @@ function StorePage() {
       note: topupForm.note,
     });
     setTopupForm({ amount: "", depositorName: "", note: "" });
+    showToast("입금 요청을 보냈습니다", "success");
     fetchFinance();
   };
 
@@ -164,11 +178,12 @@ function StorePage() {
       note: withdrawForm.note,
     });
     setWithdrawForm({ amount: "", note: "" });
+    showToast("출금 요청을 보냈습니다", "success");
     fetchFinance();
   };
 
   const renderOrderCard = (order) => (
-    <Card key={order._id} className="mini-card">
+    <Card key={order._id} className="mini-card order-card">
       <div className="section-heading">
         <div>
           <strong>{order.order_id}</strong>
@@ -176,8 +191,8 @@ function StorePage() {
         </div>
         <Badge status={order.status}>{order.status}</Badge>
       </div>
-      <p>{order.address}</p>
-      <p>{formatCurrency(order.total_price)}</p>
+      <div className="order-card__meta">{order.address}</div>
+      <div className="order-card__price">{formatCurrency(order.total_price)}</div>
       <div className="list-actions" style={{ marginTop: 12 }}>
         {order.status === "pending" && (
           <>
@@ -202,7 +217,7 @@ function StorePage() {
       />
 
       <div className="dashboard-grid">
-        <Card className="metric-card">
+        <Card className="metric-card metric-card--primary">
           <h3>{currentOrders.length}건</h3>
           <p>현재 주문</p>
         </Card>
@@ -220,7 +235,11 @@ function StorePage() {
         </Card>
       </div>
 
-      {tab === "home" && (
+      {loading ? (
+        <Card>
+          <LoadingState label="가게 주문 현황을 불러오는 중입니다" />
+        </Card>
+      ) : tab === "home" && (
         <div className="page-stack">
           <Card>
             <div className="section-heading">
@@ -230,7 +249,7 @@ function StorePage() {
               </div>
               <Badge tone="primary">{currentOrders.length}건</Badge>
             </div>
-            {currentOrders.length === 0 ? <div className="empty-state">현재 주문이 없습니다.</div> : currentOrders.map(renderOrderCard)}
+            {currentOrders.length === 0 ? <EmptyState title="현재 주문이 없습니다" description="새 주문이 들어오면 가장 먼저 여기에 표시됩니다." /> : currentOrders.map(renderOrderCard)}
           </Card>
 
           <Card>
@@ -238,7 +257,7 @@ function StorePage() {
               <h3>진행중 주문</h3>
               <Badge tone="secondary">{inProgressOrders.length}건</Badge>
             </div>
-            {inProgressOrders.length === 0 ? <div className="empty-state">진행중 주문이 없습니다.</div> : inProgressOrders.map(renderOrderCard)}
+            {inProgressOrders.length === 0 ? <EmptyState title="진행중 주문이 없습니다" description="수락한 주문과 배차 요청이 여기에 모입니다." /> : inProgressOrders.map(renderOrderCard)}
           </Card>
 
           <Card>
@@ -246,7 +265,7 @@ function StorePage() {
               <h3>완료 주문</h3>
               <Badge tone="secondary">{completedOrders.length}건</Badge>
             </div>
-            {completedOrders.length === 0 ? <div className="empty-state">완료 주문이 없습니다.</div> : completedOrders.slice(0, 10).map(renderOrderCard)}
+            {completedOrders.length === 0 ? <EmptyState title="완료 주문이 없습니다" description="완료/취소된 주문은 최근 10건만 보여드립니다." /> : completedOrders.slice(0, 10).map(renderOrderCard)}
           </Card>
 
           <Card>
@@ -254,6 +273,7 @@ function StorePage() {
               <h3>운영 메시지</h3>
               <Badge tone="primary">{notices.length}건</Badge>
             </div>
+            {notices.length === 0 && <EmptyState title="운영 메시지가 없습니다" description="새 공지는 이 영역에 표시됩니다." />}
             {notices.slice(0, 3).map((notice) => (
               <Card key={notice._id} className="mini-card">
                 <strong>{notice.title}</strong>
@@ -295,6 +315,7 @@ function StorePage() {
                   </Button>
                   <Button variant="danger" onClick={async () => {
                     await orderService.deleteMenu(menu._id);
+                    showToast("메뉴를 삭제했습니다", "success");
                     fetchStoreInfo();
                   }}>
                     삭제
@@ -388,6 +409,7 @@ function StorePage() {
               </Button>
               <Button variant={storeInfo?.autoAccept ? "primary" : "secondary"} onClick={async () => {
                 await orderService.toggleStoreAutoAccept({ autoAccept: !storeInfo?.autoAccept });
+                showToast(storeInfo?.autoAccept ? "자동수락을 껐습니다" : "자동수락을 켰습니다", "success");
                 fetchStoreInfo();
               }}>
                 자동수락 {storeInfo?.autoAccept ? "ON" : "OFF"}
@@ -399,6 +421,7 @@ function StorePage() {
       )}
 
       <BottomNavigation items={tabs} activeKey={tab} onChange={setTab} />
+      <ToastViewport />
     </AppShell>
   );
 }

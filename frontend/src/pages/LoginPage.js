@@ -5,16 +5,18 @@ import Card from "../components/ui/Card";
 import Input from "../components/ui/Input";
 import Button from "../components/ui/Button";
 import { authService } from "../services/authService";
+import { useToast } from "../hooks/useToast";
 
 function LoginPage() {
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const { showToast, ToastViewport } = useToast();
 
   const login = async () => {
     if (!username || !password) {
-      alert("아이디와 비밀번호를 입력하세요.");
+      showToast("아이디와 비밀번호를 입력하세요", "danger");
       return;
     }
 
@@ -43,7 +45,7 @@ function LoginPage() {
       else if (data.role === "store") navigate("/store");
       else navigate("/customer");
     } catch (error) {
-      alert(error.response?.data?.detail || "로그인 실패");
+      showToast(error.response?.data?.detail || "로그인 실패", "danger");
     } finally {
       setLoading(false);
     }
@@ -80,6 +82,7 @@ function LoginPage() {
           </Button>
         </div>
       </Card>
+      <ToastViewport />
     </AuthLayout>
   );
 }

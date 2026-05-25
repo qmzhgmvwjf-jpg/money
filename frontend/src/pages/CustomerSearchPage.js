@@ -6,6 +6,8 @@ import Card from "../components/ui/Card";
 import Input from "../components/ui/Input";
 import Button from "../components/ui/Button";
 import Badge from "../components/ui/Badge";
+import LoadingState from "../components/ui/LoadingState";
+import EmptyState from "../components/ui/EmptyState";
 import BottomNavigation from "../components/navigation/BottomNavigation";
 import { orderService } from "../services/orderService";
 import { getCartItems } from "../utils/cart";
@@ -16,6 +18,7 @@ const navItems = [
   { key: "home", label: "홈", icon: "🏠" },
   { key: "search", label: "검색", icon: "🔎" },
   { key: "cart", label: "장바구니", icon: "🛒" },
+  { key: "orders", label: "주문", icon: "🧾" },
   { key: "profile", label: "마이", icon: "👤" },
 ];
 
@@ -23,10 +26,15 @@ function CustomerSearchPage() {
   const navigate = useNavigate();
   const [stores, setStores] = useState([]);
   const [keyword, setKeyword] = useState("");
+  const [loading, setLoading] = useState(true);
 
   const fetchStores = useCallback(async () => {
-    const data = await orderService.getPublicStores();
-    setStores(data);
+    try {
+      const data = await orderService.getPublicStores();
+      setStores(data);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   usePolling(fetchStores, 8000);
@@ -59,6 +67,11 @@ function CustomerSearchPage() {
       </Card>
 
       <div className="panel-list">
+        {loading && (
+          <Card>
+            <LoadingState label="검색할 가게를 불러오는 중입니다" />
+          </Card>
+        )}
         {filteredStores.map((store) => (
           <Card
             key={store._id}
@@ -85,9 +98,9 @@ function CustomerSearchPage() {
             </div>
           </Card>
         ))}
-        {filteredStores.length === 0 && (
+        {!loading && filteredStores.length === 0 && (
           <Card>
-            <div className="empty-state">검색 결과가 없습니다.</div>
+            <EmptyState title="검색 결과가 없습니다" description="가게 이름을 다르게 입력해보세요." />
           </Card>
         )}
       </div>
@@ -99,6 +112,7 @@ function CustomerSearchPage() {
           if (key === "home") navigate("/customer");
           if (key === "search") navigate("/customer/search");
           if (key === "cart") navigate("/customer/cart");
+          if (key === "orders") navigate("/customer/orders");
           if (key === "profile") navigate("/customer/profile");
         }}
       />

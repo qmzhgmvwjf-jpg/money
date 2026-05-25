@@ -6,15 +6,18 @@ import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
 import Badge from "../components/ui/Badge";
+import EmptyState from "../components/ui/EmptyState";
 import BottomNavigation from "../components/navigation/BottomNavigation";
 import { orderService } from "../services/orderService";
 import { clearCartItems, getCartItems, setCartItems } from "../utils/cart";
 import { formatCurrency } from "../utils/format";
+import { useToast } from "../hooks/useToast";
 
 const navItems = [
   { key: "home", label: "홈", icon: "🏠" },
   { key: "search", label: "검색", icon: "🔎" },
   { key: "cart", label: "장바구니", icon: "🛒" },
+  { key: "orders", label: "주문", icon: "🧾" },
   { key: "profile", label: "마이", icon: "👤" },
 ];
 
@@ -25,6 +28,7 @@ function CartPage() {
   const [address, setAddress] = useState(localStorage.getItem("address") || "");
   const [paymentMethod, setPaymentMethod] = useState("card");
   const [loading, setLoading] = useState(false);
+  const { showToast, ToastViewport } = useToast();
 
   const menuTotal = useMemo(
     () => cart.reduce((sum, item) => sum + Number(item.price || 0), 0),
@@ -37,15 +41,16 @@ function CartPage() {
     const next = cart.filter((_, itemIndex) => itemIndex !== index);
     setCart(next);
     setCartItems(next);
+    showToast("메뉴를 장바구니에서 삭제했습니다", "success");
   };
 
   const submitOrder = async () => {
     if (cart.length === 0) {
-      alert("장바구니가 비어 있습니다.");
+      showToast("장바구니가 비어 있습니다", "danger");
       return;
     }
     if (!address) {
-      alert("배달 주소를 입력하세요.");
+      showToast("배달 주소를 입력하세요", "danger");
       return;
     }
     try {
@@ -62,7 +67,7 @@ function CartPage() {
       setCart([]);
       navigate("/customer/orders");
     } catch (error) {
-      alert(error.response?.data?.detail || "주문 실패");
+      showToast(error.response?.data?.detail || "주문 실패", "danger");
     } finally {
       setLoading(false);
     }
@@ -79,7 +84,11 @@ function CartPage() {
 
       {cart.length === 0 ? (
         <Card>
-          <div className="empty-state">장바구니가 비어 있습니다.</div>
+          <EmptyState
+            title="장바구니가 비어 있습니다"
+            description="가게에서 메뉴를 담으면 결제 정보가 표시됩니다."
+            action={<Button variant="secondary" onClick={() => navigate("/customer")}>가게 보러가기</Button>}
+          />
         </Card>
       ) : (
         <>
@@ -136,9 +145,11 @@ function CartPage() {
           if (key === "home") navigate("/customer");
           if (key === "search") navigate("/customer/search");
           if (key === "cart") navigate("/customer/cart");
+          if (key === "orders") navigate("/customer/orders");
           if (key === "profile") navigate("/customer/profile");
         }}
       />
+      <ToastViewport />
     </AppShell>
   );
 }

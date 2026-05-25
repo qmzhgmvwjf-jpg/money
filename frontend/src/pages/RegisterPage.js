@@ -5,6 +5,7 @@ import Card from "../components/ui/Card";
 import Input from "../components/ui/Input";
 import Button from "../components/ui/Button";
 import { authService } from "../services/authService";
+import { useToast } from "../hooks/useToast";
 
 function RegisterPage() {
   const navigate = useNavigate();
@@ -16,6 +17,7 @@ function RegisterPage() {
     storeName: "",
   });
   const [loading, setLoading] = useState(false);
+  const { showToast, ToastViewport } = useToast();
 
   const updateField = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -23,12 +25,12 @@ function RegisterPage() {
 
   const register = async () => {
     if (!form.username || !form.password || !form.phone) {
-      alert("필수 항목을 입력하세요.");
+      showToast("필수 항목을 입력하세요", "danger");
       return;
     }
 
     if (form.role === "store" && !form.storeName) {
-      alert("가게명을 입력하세요.");
+      showToast("가게명을 입력하세요", "danger");
       return;
     }
 
@@ -46,14 +48,15 @@ function RegisterPage() {
       }
 
       const data = await authService.register(payload);
-      alert(
+      showToast(
         data.approved
           ? "회원가입이 완료되었습니다. 로그인해 주세요."
-          : "회원가입이 완료되었습니다. 관리자 승인 후 로그인할 수 있습니다."
+          : "회원가입이 완료되었습니다. 관리자 승인 후 로그인할 수 있습니다.",
+        "success"
       );
       navigate("/");
     } catch (error) {
-      alert(error.response?.data?.detail || "회원가입 실패");
+      showToast(error.response?.data?.detail || "회원가입 실패", "danger");
     } finally {
       setLoading(false);
     }
@@ -114,6 +117,7 @@ function RegisterPage() {
           </Button>
         </div>
       </Card>
+      <ToastViewport />
     </AuthLayout>
   );
 }

@@ -6,11 +6,14 @@ import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
 import Badge from "../components/ui/Badge";
+import LoadingState from "../components/ui/LoadingState";
+import EmptyState from "../components/ui/EmptyState";
 import BottomNavigation from "../components/navigation/BottomNavigation";
 import { orderService } from "../services/orderService";
 import { noticeService } from "../services/noticeService";
 import { formatCurrency, groupByDate } from "../utils/format";
 import { usePolling } from "../hooks/usePolling";
+import { useToast } from "../hooks/useToast";
 
 const tabs = [
   { key: "home", label: "홈", icon: "🏍" },
@@ -35,6 +38,8 @@ function RiderPage() {
   });
   const [withdrawForm, setWithdrawForm] = useState({ amount: "", note: "" });
   const [notices, setNotices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { showToast, ToastViewport } = useToast();
 
   const logout = () => {
     localStorage.clear();
@@ -42,12 +47,16 @@ function RiderPage() {
   };
 
   const fetchDashboard = useCallback(async () => {
-    const [dashboardData, orderData] = await Promise.all([
-      orderService.getDriverDashboard(),
-      orderService.getDriverAvailableOrders(),
-    ]);
-    setDashboard(dashboardData);
-    setAvailableOrders(orderData);
+    try {
+      const [dashboardData, orderData] = await Promise.all([
+        orderService.getDriverDashboard(),
+        orderService.getDriverAvailableOrders(),
+      ]);
+      setDashboard(dashboardData);
+      setAvailableOrders(orderData);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const fetchHistory = useCallback(async () => {
@@ -85,24 +94,27 @@ function RiderPage() {
   const toggleOnline = async () => {
     const nextStatus = dashboard?.onlineStatus === "online" ? "offline" : "online";
     await orderService.updateDriverOnlineStatus({ onlineStatus: nextStatus });
+    showToast(nextStatus === "online" ? "온라인으로 전환했습니다" : "오프라인으로 전환했습니다", "success");
     fetchDashboard();
     fetchSettings();
   };
 
   const toggleDispatch = async () => {
     await orderService.updateDriverSettings({ dispatchEnabled: !settings?.dispatchEnabled });
+    showToast(settings?.dispatchEnabled ? "배차 수신을 중지했습니다" : "배차 수신을 시작했습니다", "success");
     fetchDashboard();
     fetchSettings();
   };
 
   const saveSettings = async () => {
     await orderService.updateDriverSettings(settingsForm);
+    showToast("내 정보를 저장했습니다", "success");
     fetchSettings();
   };
 
   const requestWithdrawal = async () => {
     if (!withdrawForm.amount) {
-      alert("출금 금액을 입력하세요.");
+      showToast("출금 금액을 입력하세요", "danger");
       return;
     }
     await orderService.requestDriverWithdrawal({
@@ -110,6 +122,7 @@ function RiderPage() {
       note: withdrawForm.note,
     });
     setWithdrawForm({ amount: "", note: "" });
+    showToast("출금 요청을 보냈습니다", "success");
     fetchSettings();
   };
 
@@ -118,6 +131,7 @@ function RiderPage() {
     if (type === "reject") await orderService.driverReject(id);
     if (type === "start") await orderService.driverStart(id);
     if (type === "complete") await orderService.driverComplete(id);
+    showToast("배달 상태를 업데이트했습니다", "success");
     fetchDashboard();
     fetchHistory();
     fetchEarnings();
@@ -136,10 +150,14 @@ function RiderPage() {
         onAction={logout}
       />
 
-      {tab === "home" && (
+      {loading ? (
+        <Card>
+          <LoadingState label="라이더 현황을 불러오는 중입니다" />
+        </Card>
+      ) : tab === "home" && (
         <>
           <div className="dashboard-grid">
-            <Card className="metric-card">
+            <Card className="metric-card metric-card--primary">
               <h3>{dashboard?.todayDeliveries || 0}</h3>
               <p>오늘 배달 건수</p>
             </Card>
@@ -187,7 +205,7 @@ function RiderPage() {
                 </div>
               </div>
             ) : (
-              <div className="empty-state">진행 중인 배달이 없습니다.</div>
+              <EmptyState title="진행 중인 배달이 없습니다" description="배차를 수락하면 픽업과 완료 버튼이 표시됩니다." />
             )}
           </Card>
         </>
@@ -212,7 +230,7 @@ function RiderPage() {
                 </div>
               </Card>
             ))}
-            {availableOrders.length === 0 && <div className="empty-state">현재 수락 가능한 배차가 없습니다.</div>}
+            {availableOrders.length === 0 && <EmptyState title="수락 가능한 배차가 없습니다" description="새 배차가 들어오면 이 화면에 바로 표시됩니다." />}
           </Card>
 
           <Card>
@@ -320,6 +338,7 @@ function RiderPage() {
                       variant="secondary"
                       onClick={async () => {
                         await noticeService.readNotice(notice._id);
+                        showToast("공지 읽음 처리했습니다", "success");
                         fetchNotices();
                       }}
                     >
@@ -334,6 +353,7 @@ function RiderPage() {
       )}
 
       <BottomNavigation items={tabs} activeKey={tab} onChange={setTab} />
+      <ToastViewport />
     </AppShell>
   );
 }

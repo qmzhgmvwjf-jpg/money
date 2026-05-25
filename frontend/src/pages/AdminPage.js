@@ -5,6 +5,7 @@ import Header from "../components/common/Header";
 import Card from "../components/ui/Card";
 import Badge from "../components/ui/Badge";
 import Button from "../components/ui/Button";
+import LoadingState from "../components/ui/LoadingState";
 import OrdersTab from "./admin/OrdersTab";
 import StoresTab from "./admin/StoresTab";
 import DriversTab from "./admin/DriversTab";
@@ -28,6 +29,7 @@ function AdminPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("orders");
   const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -35,6 +37,8 @@ function AdminPage() {
       setStats(data);
     } catch {
       setStats(null);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -60,30 +64,36 @@ function AdminPage() {
         onAction={logout}
       />
 
-      <div className="dashboard-grid">
-        <Card className="metric-card">
-          <h3>{stats?.totalOrders ?? 0}건</h3>
-          <p>누적 주문</p>
+      {loading ? (
+        <Card>
+          <LoadingState label="운영 현황을 불러오는 중입니다" />
         </Card>
-        <Card className="metric-card">
-          <h3>{(stats?.todayOrders ?? 0).toLocaleString()}건</h3>
-          <p>오늘 주문</p>
-        </Card>
-        <Card className="metric-card">
-          <h3>{(stats?.totalSales ?? 0).toLocaleString()}원</h3>
-          <p>누적 매출</p>
-        </Card>
-        <Card className="metric-card">
-          <div className="section-heading">
-            <h3>실시간 운영</h3>
-            <Badge tone="success">Live</Badge>
-          </div>
-          <p>각 탭에서 세부 데이터와 작업 흐름을 이어서 볼 수 있습니다.</p>
-        </Card>
-      </div>
+      ) : (
+        <div className="dashboard-grid">
+          <Card className="metric-card metric-card--primary">
+            <h3>{stats?.totalOrders ?? 0}건</h3>
+            <p>누적 주문</p>
+          </Card>
+          <Card className="metric-card">
+            <h3>{(stats?.todayOrders ?? 0).toLocaleString()}건</h3>
+            <p>오늘 주문</p>
+          </Card>
+          <Card className="metric-card">
+            <h3>{(stats?.totalSales ?? 0).toLocaleString()}원</h3>
+            <p>누적 매출</p>
+          </Card>
+          <Card className="metric-card">
+            <div className="section-heading">
+              <h3>실시간 운영</h3>
+              <Badge tone="success">Live</Badge>
+            </div>
+            <p>중요한 승인과 상태 변경은 각 탭에서 처리합니다.</p>
+          </Card>
+        </div>
+      )}
 
       <Card>
-        <div className="chip-row">
+        <div className="admin-tab-grid">
           {tabs.map((tab) => (
             <Button
               key={tab.key}

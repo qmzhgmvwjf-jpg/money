@@ -24,9 +24,10 @@ export function groupByDate(items = [], key = "created_at") {
 }
 
 export function statusTone(status) {
-  if (["completed", "success", "open", "online"].includes(status)) return "success";
-  if (["cancelled", "danger", "closed", "offline"].includes(status)) return "danger";
+  if (["completed", "success", "open", "online", "approved"].includes(status)) return "success";
+  if (["cancelled", "danger", "closed", "offline", "rejected"].includes(status)) return "danger";
   if (["assigned", "accepted", "delivering", "dispatch_ready"].includes(status)) return "primary";
+  if (["pending", "waiting"].includes(status)) return "warning";
   return "secondary";
 }
 
