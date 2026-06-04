@@ -162,6 +162,28 @@ class BalanceAdjustPayload(BaseModel):
     note: str | None = None
 
 
+class ContentPostCreate(BaseModel):
+    title: str
+    caption: str
+    videoUrl: str
+    thumbnailUrl: str | None = None
+    contentType: str = "food"
+    menuName: str | None = None
+    price: int | None = None
+    eventLabel: str | None = None
+
+
+class ContentPostUpdate(BaseModel):
+    title: str | None = None
+    caption: str | None = None
+    videoUrl: str | None = None
+    thumbnailUrl: str | None = None
+    contentType: str | None = None
+    menuName: str | None = None
+    price: int | None = None
+    eventLabel: str | None = None
+
+
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -234,6 +256,15 @@ def build_payment_id() -> str:
 
 def build_transaction_id() -> str:
     return f"TRX-{now_utc().strftime('%Y%m%d%H%M%S%f')}"
+
+
+SAMPLE_VIDEO_URLS = [
+    "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
+    "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+]
 
 
 def is_today(value: datetime | None) -> bool:
@@ -532,6 +563,30 @@ def serialize_transaction(item: dict) -> dict:
     }
 
 
+def serialize_content_post(item: dict) -> dict:
+    store = db.stores.find_one({"_id": item.get("store_id")}) if item.get("store_id") else None
+    return {
+        "_id": str(item["_id"]),
+        "store_id": str(item.get("store_id")) if item.get("store_id") else None,
+        "store_name": item.get("store_name") or (store.get("name") if store else None),
+        "title": item.get("title"),
+        "caption": item.get("caption"),
+        "video_url": item.get("video_url"),
+        "thumbnail_url": item.get("thumbnail_url"),
+        "content_type": item.get("content_type", "food"),
+        "menu_name": item.get("menu_name"),
+        "price": item.get("price"),
+        "event_label": item.get("event_label"),
+        "feed_reason": item.get("feed_reason"),
+        "likes": item.get("likes", 0),
+        "saves": item.get("saves", 0),
+        "views": item.get("views", 0),
+        "comments": item.get("comments", 0),
+        "shares": item.get("shares", 0),
+        "created_at": to_iso(item.get("created_at")),
+    }
+
+
 def ensure_default_admin():
     if db.users.find_one({"username": "admin"}):
         return
@@ -620,6 +675,45 @@ def create_store_document(
     result = db.stores.insert_one(store_doc)
     store_doc["_id"] = result.inserted_id
     return store_doc
+
+
+def get_time_based_reason() -> str:
+    hour = now_utc().astimezone(timezone(timedelta(hours=9))).hour
+    if 6 <= hour < 11:
+        return "아침에 잘 나가는 메뉴"
+    if 11 <= hour < 15:
+        return "점심 시간대 인기 피드"
+    if 15 <= hour < 18:
+        return "간식 시간 추천"
+    if 18 <= hour < 23:
+        return "저녁 주문이 몰리는 가게"
+    return "야식으로 많이 찾는 메뉴"
+
+
+def build_default_content_post(store: dict, menu: dict | None, index: int, reason: str) -> dict:
+    menu_name = menu.get("name") if menu else f"{store.get('name')} 추천 메뉴"
+    price = menu.get("price") if menu else store.get("minOrderAmount", 0)
+    title = f"{store.get('name')} · {menu_name}"
+    caption = f"{menu_name}가 지금 가장 반응이 좋은 영상이에요. {reason}"
+    return {
+        "store_id": store["_id"],
+        "store_name": store.get("name"),
+        "title": title,
+        "caption": caption,
+        "video_url": SAMPLE_VIDEO_URLS[index % len(SAMPLE_VIDEO_URLS)],
+        "thumbnail_url": None,
+        "content_type": "food",
+        "menu_name": menu_name,
+        "price": price,
+        "event_label": "오늘 추천",
+        "feed_reason": reason,
+        "likes": 120 + (index * 13),
+        "saves": 24 + (index * 3),
+        "views": 2400 + (index * 180),
+        "comments": 18 + (index * 2),
+        "shares": 9 + index,
+        "created_at": now_utc() - timedelta(minutes=index * 7),
+    }
 
 
 def register_user(data: RegisterData):
@@ -718,6 +812,153 @@ def get_activity_logs(limit: int):
 def get_public_stores():
     stores = list(db.stores.find({"approved": True}).sort("created_at", -1))
     return [serialize_store(store) for store in stores]
+
+
+def get_personalized_feed(actor: dict):
+    visible_stores = [
+        store
+        for store in db.stores.find({"approved": True}).sort("created_at", -1)
+        if is_store_open_now(store)
+    ]
+    visible_store_ids = [store["_id"] for store in visible_stores]
+    store_map = {store["_id"]: store for store in visible_stores}
+
+    posts = list(
+        db.content_posts.find({"store_id": {"$in": visible_store_ids}})
+        .sort("created_at", -1)
+        .limit(30)
+    )
+
+    if not posts:
+        recent_orders = list(db.orders.find({"user": actor["username"]}).sort("created_at", -1).limit(10))
+        favorite_store_ids = [order.get("store_id") for order in recent_orders if order.get("store_id")]
+        reason_cycle = [
+            "인기 음식",
+            "근처 인기 가게",
+            "자주 본 메뉴",
+            "많이 주문한 음식",
+            get_time_based_reason(),
+        ]
+        generated = []
+        for index, store in enumerate(visible_stores):
+            menus = list(db.menus.find({"store_id": store["_id"]}).sort("name", 1).limit(3))
+            menu = menus[index % len(menus)] if menus else None
+            if store["_id"] in favorite_store_ids:
+                reason = "자주 주문한 가게 기반 추천"
+            else:
+                reason = reason_cycle[index % len(reason_cycle)]
+            generated.append(serialize_content_post({"_id": ObjectId(), **build_default_content_post(store, menu, index, reason)}))
+        return generated
+
+    recent_orders = list(db.orders.find({"user": actor["username"]}).sort("created_at", -1).limit(10))
+    frequent_store_names = {order.get("store_name") for order in recent_orders if order.get("store_name")}
+    popular_counts = {
+        store.get("name"): db.orders.count_documents({"store_id": store["_id"], "status": "completed"})
+        for store in visible_stores
+    }
+    feed = []
+    for index, post in enumerate(posts):
+        post_store = store_map.get(post.get("store_id"))
+        reason = post.get("feed_reason")
+        if not reason:
+            if post.get("store_name") in frequent_store_names:
+                reason = "자주 주문한 음식"
+            elif popular_counts.get(post.get("store_name"), 0) >= 3:
+                reason = "지금 인기 급상승"
+            else:
+                reason = get_time_based_reason()
+        enriched = {
+            **post,
+            "feed_reason": reason,
+        }
+        if post_store:
+            enriched["store_name"] = post_store.get("name")
+        feed.append(serialize_content_post(enriched))
+    return feed
+
+
+def get_store_content_posts(actor: dict):
+    store = get_store_by_owner(actor["username"])
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+    return [
+        serialize_content_post(item)
+        for item in db.content_posts.find({"store_id": store["_id"]}).sort("created_at", -1)
+    ]
+
+
+def create_store_content_post(actor: dict, data: ContentPostCreate):
+    store = get_store_by_owner(actor["username"])
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+
+    post_doc = {
+        "store_id": store["_id"],
+        "store_name": store.get("name"),
+        "title": data.title.strip(),
+        "caption": data.caption.strip(),
+        "video_url": data.videoUrl.strip(),
+        "thumbnail_url": data.thumbnailUrl.strip() if data.thumbnailUrl else None,
+        "content_type": data.contentType,
+        "menu_name": data.menuName.strip() if data.menuName else None,
+        "price": data.price,
+        "event_label": data.eventLabel.strip() if data.eventLabel else None,
+        "feed_reason": "가게가 직접 올린 최신 영상",
+        "likes": 0,
+        "saves": 0,
+        "views": 0,
+        "comments": 0,
+        "shares": 0,
+        "created_at": now_utc(),
+    }
+    result = db.content_posts.insert_one(post_doc)
+    post_doc["_id"] = result.inserted_id
+    create_activity_log(actor["username"], "store", "create_content_post", f"{store.get('name')} 쇼츠 등록")
+    return serialize_content_post(post_doc)
+
+
+def update_store_content_post(post_id: str, actor: dict, data: ContentPostUpdate):
+    store = get_store_by_owner(actor["username"])
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+    post = db.content_posts.find_one({"_id": object_id_or_400(post_id, "content post id")})
+    if not post or post.get("store_id") != store["_id"]:
+        raise HTTPException(status_code=404, detail="Content post not found")
+
+    update_data = {}
+    if data.title is not None:
+        update_data["title"] = data.title.strip()
+    if data.caption is not None:
+        update_data["caption"] = data.caption.strip()
+    if data.videoUrl is not None:
+        update_data["video_url"] = data.videoUrl.strip()
+    if data.thumbnailUrl is not None:
+        update_data["thumbnail_url"] = data.thumbnailUrl.strip() if data.thumbnailUrl else None
+    if data.contentType is not None:
+        update_data["content_type"] = data.contentType
+    if data.menuName is not None:
+        update_data["menu_name"] = data.menuName.strip() if data.menuName else None
+    if data.price is not None:
+        update_data["price"] = data.price
+    if data.eventLabel is not None:
+        update_data["event_label"] = data.eventLabel.strip() if data.eventLabel else None
+
+    if update_data:
+        db.content_posts.update_one({"_id": post["_id"]}, {"$set": update_data})
+    create_activity_log(actor["username"], "store", "update_content_post", f"{store.get('name')} 쇼츠 수정")
+    return serialize_content_post(db.content_posts.find_one({"_id": post["_id"]}))
+
+
+def delete_store_content_post(post_id: str, actor: dict):
+    store = get_store_by_owner(actor["username"])
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+    post = db.content_posts.find_one({"_id": object_id_or_400(post_id, "content post id")})
+    if not post or post.get("store_id") != store["_id"]:
+        raise HTTPException(status_code=404, detail="Content post not found")
+    db.content_posts.delete_one({"_id": post["_id"]})
+    create_activity_log(actor["username"], "store", "delete_content_post", f"{store.get('name')} 쇼츠 삭제")
+    return {"ok": True}
 
 
 def get_admin_stores():

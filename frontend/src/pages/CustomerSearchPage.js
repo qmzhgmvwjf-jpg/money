@@ -18,7 +18,6 @@ const navItems = [
   { key: "home", label: "홈", icon: "🏠" },
   { key: "search", label: "검색", icon: "🔎" },
   { key: "cart", label: "장바구니", icon: "🛒" },
-  { key: "orders", label: "주문", icon: "🧾" },
   { key: "profile", label: "마이", icon: "👤" },
 ];
 
@@ -112,7 +111,6 @@ function CustomerSearchPage() {
           if (key === "home") navigate("/customer");
           if (key === "search") navigate("/customer/search");
           if (key === "cart") navigate("/customer/cart");
-          if (key === "orders") navigate("/customer/orders");
           if (key === "profile") navigate("/customer/profile");
         }}
       />

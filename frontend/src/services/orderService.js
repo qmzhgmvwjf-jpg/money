@@ -2,6 +2,7 @@ import api from "./api";
 
 export const orderService = {
   getPublicStores: () => api.get("/stores").then((res) => res.data),
+  getFeed: () => api.get("/feed").then((res) => res.data),
   getMenus: (storeId) =>
     api
       .get(storeId ? `/menus?store_id=${storeId}` : "/menus")
@@ -31,6 +32,11 @@ export const orderService = {
   requestStoreTopup: (payload) => api.post("/store/topup-requests", payload).then((res) => res.data),
   requestStoreWithdrawal: (payload) =>
     api.post("/store/withdrawal-requests", payload).then((res) => res.data),
+  getStoreContentPosts: () => api.get("/store/content-posts").then((res) => res.data),
+  createStoreContentPost: (payload) => api.post("/store/content-posts", payload).then((res) => res.data),
+  updateStoreContentPost: (id, payload) =>
+    api.put(`/store/content-posts/${id}`, payload).then((res) => res.data),
+  deleteStoreContentPost: (id) => api.delete(`/store/content-posts/${id}`),
   createMenu: (payload) => api.post("/menus", payload).then((res) => res.data),
   updateMenu: (id, payload) => api.put(`/menus/${id}`, payload).then((res) => res.data),
   deleteMenu: (id) => api.delete(`/menus/${id}`),

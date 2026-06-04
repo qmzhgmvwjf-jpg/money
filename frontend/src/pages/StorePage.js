@@ -18,6 +18,7 @@ import { useToast } from "../hooks/useToast";
 const tabs = [
   { key: "home", label: "메인", icon: "🏪" },
   { key: "menus", label: "메뉴", icon: "🍽️" },
+  { key: "content", label: "쇼츠", icon: "🎬" },
   { key: "finance", label: "정산", icon: "💰" },
   { key: "settings", label: "설정", icon: "⚙️" },
 ];
@@ -31,6 +32,18 @@ function StorePage() {
   const [tab, setTab] = useState("home");
   const [menuForm, setMenuForm] = useState({ name: "", price: "" });
   const [editingMenuId, setEditingMenuId] = useState(null);
+  const [contentPosts, setContentPosts] = useState([]);
+  const [contentForm, setContentForm] = useState({
+    title: "",
+    caption: "",
+    videoUrl: "",
+    thumbnailUrl: "",
+    contentType: "food",
+    menuName: "",
+    price: "",
+    eventLabel: "",
+  });
+  const [editingContentId, setEditingContentId] = useState(null);
   const [settingsForm, setSettingsForm] = useState({
     name: "",
     description: "",
@@ -95,11 +108,17 @@ function StorePage() {
     setNotices(data);
   }, []);
 
+  const fetchContentPosts = useCallback(async () => {
+    const data = await orderService.getStoreContentPosts();
+    setContentPosts(data);
+  }, []);
+
   usePolling(fetchOrders, 3000);
   usePolling(fetchStats, 5000);
   usePolling(fetchStoreInfo, 5000);
   usePolling(fetchFinance, 7000);
   usePolling(fetchNotices, 7000);
+  usePolling(fetchContentPosts, 7000);
 
   const currentOrders = useMemo(
     () => orders.filter((order) => order.status === "pending"),
@@ -180,6 +199,38 @@ function StorePage() {
     setWithdrawForm({ amount: "", note: "" });
     showToast("출금 요청을 보냈습니다", "success");
     fetchFinance();
+  };
+
+  const submitContentPost = async () => {
+    if (!contentForm.title || !contentForm.caption || !contentForm.videoUrl) {
+      showToast("제목, 소개, 영상 URL을 입력하세요", "danger");
+      return;
+    }
+
+    const payload = {
+      ...contentForm,
+      price: contentForm.price ? Number(contentForm.price) : null,
+    };
+
+    if (editingContentId) {
+      await orderService.updateStoreContentPost(editingContentId, payload);
+    } else {
+      await orderService.createStoreContentPost(payload);
+    }
+
+    setEditingContentId(null);
+    setContentForm({
+      title: "",
+      caption: "",
+      videoUrl: "",
+      thumbnailUrl: "",
+      contentType: "food",
+      menuName: "",
+      price: "",
+      eventLabel: "",
+    });
+    showToast(editingContentId ? "쇼츠를 수정했습니다" : "쇼츠를 등록했습니다", "success");
+    fetchContentPosts();
   };
 
   const renderOrderCard = (order) => (
@@ -321,6 +372,111 @@ function StorePage() {
                     삭제
                   </Button>
                 </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {tab === "content" && (
+        <div className="page-stack">
+          <Card>
+            <div className="section-heading">
+              <div>
+                <h3>쇼츠 업로드</h3>
+                <p>가게 홍보 영상, 인기 메뉴 영상, 리뷰형 영상을 직접 피드에 올릴 수 있어요.</p>
+              </div>
+              <Badge tone="primary">{contentPosts.length}개</Badge>
+            </div>
+            <div className="auth-form" style={{ marginTop: 16 }}>
+              <Input label="제목" value={contentForm.title} onChange={(event) => setContentForm((prev) => ({ ...prev, title: event.target.value }))} />
+              <Input label="설명" as="textarea" rows={4} value={contentForm.caption} onChange={(event) => setContentForm((prev) => ({ ...prev, caption: event.target.value }))} />
+              <Input label="영상 URL" value={contentForm.videoUrl} onChange={(event) => setContentForm((prev) => ({ ...prev, videoUrl: event.target.value }))} />
+              <Input label="썸네일 URL" value={contentForm.thumbnailUrl} onChange={(event) => setContentForm((prev) => ({ ...prev, thumbnailUrl: event.target.value }))} />
+              <Input label="콘텐츠 타입" as="select" value={contentForm.contentType} onChange={(event) => setContentForm((prev) => ({ ...prev, contentType: event.target.value }))}>
+                <option value="food">음식 쇼츠</option>
+                <option value="promo">가게 홍보 영상</option>
+                <option value="event">할인 이벤트</option>
+                <option value="review">리뷰 영상</option>
+              </Input>
+              <Input label="대표 메뉴명" value={contentForm.menuName} onChange={(event) => setContentForm((prev) => ({ ...prev, menuName: event.target.value }))} />
+              <Input label="가격" type="number" value={contentForm.price} onChange={(event) => setContentForm((prev) => ({ ...prev, price: event.target.value }))} />
+              <Input label="이벤트 라벨" value={contentForm.eventLabel} onChange={(event) => setContentForm((prev) => ({ ...prev, eventLabel: event.target.value }))} />
+              <div className="list-actions">
+                <Button onClick={submitContentPost}>{editingContentId ? "쇼츠 수정" : "쇼츠 등록"}</Button>
+                {editingContentId && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setEditingContentId(null);
+                      setContentForm({
+                        title: "",
+                        caption: "",
+                        videoUrl: "",
+                        thumbnailUrl: "",
+                        contentType: "food",
+                        menuName: "",
+                        price: "",
+                        eventLabel: "",
+                      });
+                    }}
+                  >
+                    취소
+                  </Button>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          {contentPosts.length === 0 && (
+            <Card>
+              <EmptyState title="등록된 쇼츠가 없습니다" description="첫 홍보 영상을 올려서 고객 홈 피드에 노출해보세요." />
+            </Card>
+          )}
+
+          {contentPosts.map((post) => (
+            <Card key={post._id} className="mini-card">
+              <div className="section-heading">
+                <div>
+                  <strong>{post.title}</strong>
+                  <p>{post.content_type} · {post.menu_name || "가게 홍보"}</p>
+                </div>
+                <Badge tone="secondary">{post.views?.toLocaleString() || 0} views</Badge>
+              </div>
+              <p>{post.caption}</p>
+              <div className="list-actions" style={{ marginTop: 12 }}>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setEditingContentId(post._id);
+                    setContentForm({
+                      title: post.title || "",
+                      caption: post.caption || "",
+                      videoUrl: post.video_url || "",
+                      thumbnailUrl: post.thumbnail_url || "",
+                      contentType: post.content_type || "food",
+                      menuName: post.menu_name || "",
+                      price: post.price ? String(post.price) : "",
+                      eventLabel: post.event_label || "",
+                    });
+                    setTab("content");
+                  }}
+                >
+                  수정
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={async () => {
+                    await orderService.deleteStoreContentPost(post._id);
+                    showToast("쇼츠를 삭제했습니다", "success");
+                    fetchContentPosts();
+                  }}
+                >
+                  삭제
+                </Button>
+                <Button variant="secondary" onClick={() => window.open(post.video_url, "_blank", "noopener,noreferrer")}>
+                  미리보기
+                </Button>
               </div>
             </Card>
           ))}

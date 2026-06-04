@@ -7,6 +7,8 @@ db = client["delivery"]
 db.users.create_index("username", unique=True)
 db.stores.create_index("owner", unique=True)
 db.orders.create_index("order_id", unique=True, sparse=True)
+db.content_posts.create_index("created_at")
+db.content_posts.create_index([("store_id", 1), ("created_at", -1)])
 db.payments.create_index("payment_id", unique=True, sparse=True)
 db.topup_requests.create_index("created_at")
 db.withdrawal_requests.create_index("created_at")
