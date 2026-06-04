@@ -13,8 +13,9 @@ import { usePolling } from "../hooks/usePolling";
 
 const navItems = [
   { key: "home", label: "홈", icon: "🏠" },
-  { key: "search", label: "검색", icon: "🔎" },
+  { key: "shorts", label: "쇼츠", icon: "▶" },
   { key: "cart", label: "장바구니", icon: "🛒" },
+  { key: "search", label: "검색", icon: "🔎" },
   { key: "profile", label: "마이", icon: "👤" },
 ];
 
@@ -123,6 +124,19 @@ function CustomerProfilePage() {
 
       <Card>
         <div className="section-heading">
+          <h3>확장 서비스</h3>
+          <Badge tone="secondary">SNS Food</Badge>
+        </div>
+        <div className="chip-row" style={{ marginTop: 16 }}>
+          <Button variant="secondary">찜한 가게</Button>
+          <Button variant="secondary">쿠폰함</Button>
+          <Button variant="secondary">포인트</Button>
+          <Button variant="secondary">알림 설정</Button>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="section-heading">
           <h3>진행중 주문</h3>
           <Badge tone="primary">{inProgressOrders.length}건</Badge>
         </div>
@@ -169,6 +183,7 @@ function CustomerProfilePage() {
         activeKey="profile"
         onChange={(key) => {
           if (key === "home") navigate("/customer");
+          if (key === "shorts") navigate("/customer/shorts");
           if (key === "search") navigate("/customer/search");
           if (key === "cart") navigate("/customer/cart");
           if (key === "profile") navigate("/customer/profile");

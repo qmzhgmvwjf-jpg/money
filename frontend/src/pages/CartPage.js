@@ -15,9 +15,9 @@ import { useToast } from "../hooks/useToast";
 
 const navItems = [
   { key: "home", label: "홈", icon: "🏠" },
-  { key: "search", label: "검색", icon: "🔎" },
+  { key: "shorts", label: "쇼츠", icon: "▶" },
   { key: "cart", label: "장바구니", icon: "🛒" },
-  { key: "orders", label: "주문", icon: "🧾" },
+  { key: "search", label: "검색", icon: "🔎" },
   { key: "profile", label: "마이", icon: "👤" },
 ];
 
@@ -65,7 +65,7 @@ function CartPage() {
       });
       clearCartItems();
       setCart([]);
-      navigate("/customer/orders");
+      navigate("/customer/profile");
     } catch (error) {
       showToast(error.response?.data?.detail || "주문 실패", "danger");
     } finally {
@@ -143,9 +143,9 @@ function CartPage() {
         activeKey="cart"
         onChange={(key) => {
           if (key === "home") navigate("/customer");
-          if (key === "search") navigate("/customer/search");
+          if (key === "shorts") navigate("/customer/shorts");
           if (key === "cart") navigate("/customer/cart");
-          if (key === "orders") navigate("/customer/orders");
+          if (key === "search") navigate("/customer/search");
           if (key === "profile") navigate("/customer/profile");
         }}
       />

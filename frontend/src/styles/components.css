@@ -194,41 +194,87 @@
 .bottom-navigation {
   position: fixed;
   left: 50%;
-  bottom: 16px;
+  bottom: 14px;
   transform: translateX(-50%);
-  width: calc(100% - 24px);
-  max-width: calc(var(--mobile-width) - 12px);
+  width: calc(100% - 20px);
+  max-width: calc(var(--mobile-width) - 8px);
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
-  gap: 6px;
-  padding: 8px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid var(--color-gray-200);
-  box-shadow: var(--shadow-strong);
-  backdrop-filter: blur(14px);
+  gap: 4px;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-radius: 26px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(247, 249, 255, 0.94) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  box-shadow:
+    0 24px 48px rgba(15, 23, 42, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(20px);
   z-index: 60;
 }
 
 .bottom-navigation__item {
-  min-height: 54px;
+  min-height: 58px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: 20px;
   background: transparent;
   color: var(--color-text-muted);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 5px;
   font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  transition:
+    transform 160ms ease,
+    color 160ms ease,
+    background 160ms ease;
+}
+
+.bottom-navigation__item:hover,
+.bottom-navigation__item:active {
+  transform: translateY(-1px);
+}
+
+.bottom-navigation__icon-shell {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: rgba(148, 163, 184, 0.12);
+  transition:
+    background 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.bottom-navigation__icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.bottom-navigation__label {
+  font-size: 11px;
+  line-height: 1;
 }
 
 .bottom-navigation__item.is-active {
-  background: #eff6ff;
+  background: rgba(59, 130, 246, 0.08);
   color: var(--color-primary);
   font-weight: 900;
+}
+
+.bottom-navigation__item.is-active .bottom-navigation__icon-shell {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.18), rgba(14, 165, 233, 0.18));
+  box-shadow:
+    0 10px 22px rgba(37, 99, 235, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  transform: translateY(-1px);
 }
 
 .app-header {

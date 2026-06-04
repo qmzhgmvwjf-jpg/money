@@ -16,8 +16,9 @@ import { usePolling } from "../hooks/usePolling";
 
 const navItems = [
   { key: "home", label: "홈", icon: "🏠" },
-  { key: "search", label: "검색", icon: "🔎" },
+  { key: "shorts", label: "쇼츠", icon: "▶" },
   { key: "cart", label: "장바구니", icon: "🛒" },
+  { key: "search", label: "검색", icon: "🔎" },
   { key: "profile", label: "마이", icon: "👤" },
 ];
 
@@ -54,6 +55,7 @@ function CustomerPage() {
 
   const handleNav = (key) => {
     if (key === "home") navigate("/customer");
+    if (key === "shorts") navigate("/customer/shorts");
     if (key === "search") navigate("/customer/search");
     if (key === "cart") navigate("/customer/cart");
     if (key === "profile") navigate("/customer/profile");
@@ -135,7 +137,7 @@ function CustomerPage() {
 
           <div className="section-heading">
             <h3>쇼츠 피드</h3>
-            <p>스크롤하며 음식 콘텐츠를 보고 바로 주문까지 이어가세요.</p>
+            <p>릴스처럼 넘겨보다가 마음에 들면 바로 가게로 들어갈 수 있어요.</p>
           </div>
 
           <section className="short-feed">
@@ -147,7 +149,7 @@ function CustomerPage() {
                 />
               </Card>
             ) : (
-              feed.map((post) => (
+              feed.slice(0, 2).map((post) => (
                 <ShortFeedCard
                   key={post._id}
                   post={post}
@@ -157,6 +159,18 @@ function CustomerPage() {
               ))
             )}
           </section>
+
+          {feed.length > 2 && (
+            <Card className="short-feed-cta" interactive onClick={() => navigate("/customer/shorts")}>
+              <div className="section-heading">
+                <div>
+                  <h3>쇼츠 더 보기</h3>
+                  <p>지금 인기 음식 릴스를 전체 화면으로 이어서 감상하세요.</p>
+                </div>
+                <Button>쇼츠 열기</Button>
+              </div>
+            </Card>
+          )}
         </>
       )}
 

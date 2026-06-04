@@ -10,8 +10,10 @@ function BottomNavigation({ items, activeKey, onChange }) {
           onClick={() => onChange(item.key)}
           type="button"
         >
-          <span className="bottom-navigation__icon">{item.icon}</span>
-          <span>{item.label}</span>
+          <span className="bottom-navigation__icon-shell">
+            <span className="bottom-navigation__icon">{item.icon}</span>
+          </span>
+          <span className="bottom-navigation__label">{item.label}</span>
         </button>
       ))}
     </nav>

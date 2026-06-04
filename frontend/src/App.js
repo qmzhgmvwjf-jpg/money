@@ -13,6 +13,7 @@ import CartPage from "./pages/CartPage";
 import CustomerOrdersPage from "./pages/CustomerOrdersPage";
 import CustomerProfilePage from "./pages/CustomerProfilePage";
 import CustomerSearchPage from "./pages/CustomerSearchPage";
+import CustomerShortsPage from "./pages/CustomerShortsPage";
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/rider" element={<RiderPage />} />
         <Route path="/customer" element={<CustomerPage />} />
+        <Route path="/customer/shorts" element={<CustomerShortsPage />} />
         <Route path="/customer/search" element={<CustomerSearchPage />} />
         <Route path="/customer/store/:storeId" element={<CustomerStoreDetailPage />} />
         <Route path="/customer/cart" element={<CartPage />} />

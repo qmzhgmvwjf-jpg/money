@@ -13,8 +13,9 @@ import { usePolling } from "../hooks/usePolling";
 
 const navItems = [
   { key: "home", label: "홈", icon: "🏠" },
-  { key: "search", label: "검색", icon: "🔎" },
+  { key: "shorts", label: "쇼츠", icon: "▶" },
   { key: "cart", label: "장바구니", icon: "🛒" },
+  { key: "search", label: "검색", icon: "🔎" },
   { key: "profile", label: "마이", icon: "👤" },
 ];
 
@@ -117,6 +118,7 @@ function CustomerStoreDetailPage() {
         activeKey="home"
         onChange={(key) => {
           if (key === "home") navigate("/customer");
+          if (key === "shorts") navigate("/customer/shorts");
           if (key === "search") navigate("/customer/search");
           if (key === "cart") navigate("/customer/cart");
           if (key === "profile") navigate("/customer/profile");
