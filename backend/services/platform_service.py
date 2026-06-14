@@ -184,6 +184,34 @@ class ContentPostUpdate(BaseModel):
     eventLabel: str | None = None
 
 
+class StoreStoryCreate(BaseModel):
+    title: str
+    content: str
+    imageUrl: str | None = None
+    storyType: str = "today"
+
+
+class StoreStoryUpdate(BaseModel):
+    title: str | None = None
+    content: str | None = None
+    imageUrl: str | None = None
+    storyType: str | None = None
+
+
+class RegularNoteCreate(BaseModel):
+    message: str
+
+
+class AlbumEntryCreate(BaseModel):
+    title: str
+    caption: str
+    imageUrl: str | None = None
+
+
+class GuestbookEntryCreate(BaseModel):
+    message: str
+
+
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -587,6 +615,68 @@ def serialize_content_post(item: dict) -> dict:
     }
 
 
+def get_regular_level(order_count: int) -> str:
+    if order_count >= 15:
+        return "전설의 단골"
+    if order_count >= 8:
+        return "VIP 단골"
+    if order_count >= 3:
+        return "단골"
+    return "일반 손님"
+
+
+def serialize_store_story(item: dict) -> dict:
+    return {
+        "_id": str(item["_id"]),
+        "store_id": str(item.get("store_id")) if item.get("store_id") else None,
+        "title": item.get("title"),
+        "content": item.get("content"),
+        "image_url": item.get("image_url"),
+        "story_type": item.get("story_type", "today"),
+        "author_name": item.get("author_name"),
+        "created_at": to_iso(item.get("created_at")),
+        "updated_at": to_iso(item.get("updated_at")),
+    }
+
+
+def serialize_store_regular_note(item: dict) -> dict:
+    return {
+        "_id": str(item["_id"]),
+        "store_id": str(item.get("store_id")) if item.get("store_id") else None,
+        "username": item.get("username"),
+        "author_name": item.get("author_name"),
+        "message": item.get("message"),
+        "regular_level": item.get("regular_level", "일반 손님"),
+        "order_count": item.get("order_count", 0),
+        "created_at": to_iso(item.get("created_at")),
+    }
+
+
+def serialize_store_album_entry(item: dict) -> dict:
+    return {
+        "_id": str(item["_id"]),
+        "store_id": str(item.get("store_id")) if item.get("store_id") else None,
+        "author_role": item.get("author_role"),
+        "username": item.get("username"),
+        "author_name": item.get("author_name"),
+        "title": item.get("title"),
+        "caption": item.get("caption"),
+        "image_url": item.get("image_url"),
+        "created_at": to_iso(item.get("created_at")),
+    }
+
+
+def serialize_store_guestbook_entry(item: dict) -> dict:
+    return {
+        "_id": str(item["_id"]),
+        "store_id": str(item.get("store_id")) if item.get("store_id") else None,
+        "username": item.get("username"),
+        "author_name": item.get("author_name"),
+        "message": item.get("message"),
+        "created_at": to_iso(item.get("created_at")),
+    }
+
+
 def ensure_default_admin():
     if db.users.find_one({"username": "admin"}):
         return
@@ -716,6 +806,72 @@ def build_default_content_post(store: dict, menu: dict | None, index: int, reaso
     }
 
 
+def get_store_completed_order_count_for_user(store_id: ObjectId, username: str) -> int:
+    return db.orders.count_documents(
+        {
+            "store_id": store_id,
+            "user": username,
+            "status": "completed",
+        }
+    )
+
+
+def get_store_regular_badge(store_id: ObjectId, username: str) -> dict:
+    order_count = get_store_completed_order_count_for_user(store_id, username)
+    return {
+        "orderCount": order_count,
+        "level": get_regular_level(order_count),
+    }
+
+
+def get_support_flags(store_id: ObjectId, username: str | None) -> dict:
+    if not username:
+        return {"liked": False, "cheered": False, "isRegular": False}
+
+    supports = list(db.store_supports.find({"store_id": store_id, "username": username}))
+    types = {item.get("support_type") for item in supports}
+    return {
+        "liked": "like" in types,
+        "cheered": "cheer" in types,
+        "isRegular": "regular" in types,
+    }
+
+
+def get_store_support_counts(store_id: ObjectId) -> dict:
+    supports = list(db.store_supports.find({"store_id": store_id}))
+    return {
+        "likes": len([item for item in supports if item.get("support_type") == "like"]),
+        "cheers": len([item for item in supports if item.get("support_type") == "cheer"]),
+        "regulars": len([item for item in supports if item.get("support_type") == "regular"]),
+    }
+
+
+def build_top_regulars(store_id: ObjectId, limit: int = 5) -> list[dict]:
+    ranking: dict[str, dict[str, Any]] = {}
+    for order in db.orders.find({"store_id": store_id, "status": "completed"}):
+        username = order.get("user")
+        if not username:
+            continue
+        current = ranking.setdefault(
+            username,
+            {
+                "username": username,
+                "author_name": order.get("customer_name") or username,
+                "order_count": 0,
+            },
+        )
+        current["order_count"] += 1
+
+    top_regulars = sorted(ranking.values(), key=lambda item: item["order_count"], reverse=True)[:limit]
+    return [
+        {
+            **item,
+            "regular_level": get_regular_level(item["order_count"]),
+        }
+        for item in top_regulars
+    ]
+
+
 def register_user(data: RegisterData):
     role = data.role.strip()
 
@@ -812,6 +968,240 @@ def get_activity_logs(limit: int):
 def get_public_stores():
     stores = list(db.stores.find({"approved": True}).sort("created_at", -1))
     return [serialize_store(store) for store in stores]
+
+
+def get_store_community(store_id: str, actor: dict | None = None):
+    store = get_store_or_404(store_id)
+    if not store.get("approved", False):
+        raise HTTPException(status_code=404, detail="Store not found")
+
+    story_items = [
+        serialize_store_story(item)
+        for item in db.store_stories.find({"store_id": store["_id"]}).sort("created_at", -1).limit(20)
+    ]
+    regular_notes = [
+        serialize_store_regular_note(item)
+        for item in db.store_regular_notes.find({"store_id": store["_id"]}).sort("created_at", -1).limit(20)
+    ]
+    album_entries = [
+        serialize_store_album_entry(item)
+        for item in db.store_album_entries.find({"store_id": store["_id"]}).sort("created_at", -1).limit(24)
+    ]
+    guestbook_entries = [
+        serialize_store_guestbook_entry(item)
+        for item in db.store_guestbook_entries.find({"store_id": store["_id"]}).sort("created_at", -1).limit(30)
+    ]
+
+    username = actor.get("username") if actor else None
+    viewer_badge = get_store_regular_badge(store["_id"], username) if username else {"orderCount": 0, "level": "일반 손님"}
+    support_counts = get_store_support_counts(store["_id"])
+    support_flags = get_support_flags(store["_id"], username)
+
+    return {
+        "store": serialize_store(store),
+        "stats": {
+            **support_counts,
+            "stories": db.store_stories.count_documents({"store_id": store["_id"]}),
+            "albums": db.store_album_entries.count_documents({"store_id": store["_id"]}),
+            "guestbook": db.store_guestbook_entries.count_documents({"store_id": store["_id"]}),
+        },
+        "viewer": {
+            "username": username,
+            "role": actor.get("role") if actor else None,
+            "regularLevel": viewer_badge["level"],
+            "orderCount": viewer_badge["orderCount"],
+            **support_flags,
+        },
+        "topRegulars": build_top_regulars(store["_id"]),
+        "ownerStories": story_items,
+        "regularNotes": regular_notes,
+        "albumEntries": album_entries,
+        "guestbookEntries": guestbook_entries,
+    }
+
+
+def toggle_store_support(store_id: str, actor: dict, support_type: str):
+    if actor.get("role") != "customer":
+        raise HTTPException(status_code=403, detail="손님만 이용할 수 있는 기능입니다.")
+    if support_type not in {"like", "cheer", "regular"}:
+        raise HTTPException(status_code=400, detail="유효하지 않은 응원 타입입니다.")
+
+    store = get_store_or_404(store_id)
+    existing = db.store_supports.find_one(
+        {"store_id": store["_id"], "username": actor["username"], "support_type": support_type}
+    )
+    active = False
+    if existing:
+        db.store_supports.delete_one({"_id": existing["_id"]})
+    else:
+        db.store_supports.insert_one(
+            {
+                "store_id": store["_id"],
+                "store_name": store.get("name"),
+                "username": actor["username"],
+                "support_type": support_type,
+                "created_at": now_utc(),
+            }
+        )
+        active = True
+
+    create_activity_log(
+        actor["username"],
+        actor["role"],
+        f"toggle_{support_type}",
+        f"{store.get('name')} {support_type} {'등록' if active else '해제'}",
+    )
+    return {
+        "supportType": support_type,
+        "active": active,
+        "community": get_store_community(store_id, actor),
+    }
+
+
+def create_store_story(store_id: str, actor: dict, data: StoreStoryCreate):
+    if actor.get("role") != "store":
+        raise HTTPException(status_code=403, detail="사장님만 작성할 수 있습니다.")
+
+    store = get_store_or_404(store_id)
+    if store.get("owner") != actor["username"]:
+        raise HTTPException(status_code=403, detail="내 가게만 수정할 수 있습니다.")
+
+    if not data.title.strip() or not data.content.strip():
+        raise HTTPException(status_code=400, detail="제목과 본문을 입력하세요.")
+
+    story = {
+        "store_id": store["_id"],
+        "author_name": store.get("name"),
+        "title": data.title.strip(),
+        "content": data.content.strip(),
+        "image_url": data.imageUrl.strip() if data.imageUrl else None,
+        "story_type": data.storyType,
+        "created_at": now_utc(),
+        "updated_at": now_utc(),
+    }
+    result = db.store_stories.insert_one(story)
+    story["_id"] = result.inserted_id
+    create_activity_log(actor["username"], "store", "create_story", f"{store.get('name')} 스토리 작성")
+    return serialize_store_story(story)
+
+
+def update_store_story(story_id: str, actor: dict, data: StoreStoryUpdate):
+    if actor.get("role") != "store":
+        raise HTTPException(status_code=403, detail="사장님만 수정할 수 있습니다.")
+
+    story = db.store_stories.find_one({"_id": object_id_or_400(story_id, "story id")})
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+
+    store = get_store_or_404(str(story["store_id"]))
+    if store.get("owner") != actor["username"]:
+        raise HTTPException(status_code=403, detail="내 가게만 수정할 수 있습니다.")
+
+    update_data = {}
+    if data.title is not None:
+        update_data["title"] = data.title.strip()
+    if data.content is not None:
+        update_data["content"] = data.content.strip()
+    if data.imageUrl is not None:
+        update_data["image_url"] = data.imageUrl.strip()
+    if data.storyType is not None:
+        update_data["story_type"] = data.storyType
+    update_data["updated_at"] = now_utc()
+
+    db.store_stories.update_one({"_id": story["_id"]}, {"$set": update_data})
+    create_activity_log(actor["username"], "store", "update_story", f"{store.get('name')} 스토리 수정")
+    return serialize_store_story(db.store_stories.find_one({"_id": story["_id"]}))
+
+
+def delete_store_story(story_id: str, actor: dict):
+    if actor.get("role") != "store":
+        raise HTTPException(status_code=403, detail="사장님만 삭제할 수 있습니다.")
+
+    story = db.store_stories.find_one({"_id": object_id_or_400(story_id, "story id")})
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+
+    store = get_store_or_404(str(story["store_id"]))
+    if store.get("owner") != actor["username"]:
+        raise HTTPException(status_code=403, detail="내 가게만 삭제할 수 있습니다.")
+
+    db.store_stories.delete_one({"_id": story["_id"]})
+    create_activity_log(actor["username"], "store", "delete_story", f"{store.get('name')} 스토리 삭제")
+    return {"message": "deleted"}
+
+
+def create_regular_note(store_id: str, actor: dict, data: RegularNoteCreate):
+    if actor.get("role") != "customer":
+        raise HTTPException(status_code=403, detail="손님만 작성할 수 있습니다.")
+
+    if not data.message.strip():
+        raise HTTPException(status_code=400, detail="내용을 입력하세요.")
+
+    store = get_store_or_404(store_id)
+    regular_badge = get_store_regular_badge(store["_id"], actor["username"])
+    note = {
+        "store_id": store["_id"],
+        "username": actor["username"],
+        "author_name": actor["username"],
+        "message": data.message.strip(),
+        "regular_level": regular_badge["level"],
+        "order_count": regular_badge["orderCount"],
+        "created_at": now_utc(),
+    }
+    result = db.store_regular_notes.insert_one(note)
+    note["_id"] = result.inserted_id
+    create_activity_log(actor["username"], "customer", "create_regular_note", f"{store.get('name')} 단골 한마디 작성")
+    return serialize_store_regular_note(note)
+
+
+def create_album_entry(store_id: str, actor: dict, data: AlbumEntryCreate):
+    if actor.get("role") not in {"customer", "store"}:
+        raise HTTPException(status_code=403, detail="권한 없음")
+
+    if not data.title.strip() or not data.caption.strip():
+        raise HTTPException(status_code=400, detail="제목과 내용을 입력하세요.")
+
+    store = get_store_or_404(store_id)
+    author_name = actor["username"]
+    if actor.get("role") == "store":
+        if store.get("owner") != actor["username"]:
+            raise HTTPException(status_code=403, detail="내 가게에만 추억을 남길 수 있습니다.")
+        author_name = store.get("name")
+
+    entry = {
+        "store_id": store["_id"],
+        "author_role": actor["role"],
+        "username": actor["username"],
+        "author_name": author_name,
+        "title": data.title.strip(),
+        "caption": data.caption.strip(),
+        "image_url": data.imageUrl.strip() if data.imageUrl else None,
+        "created_at": now_utc(),
+    }
+    result = db.store_album_entries.insert_one(entry)
+    entry["_id"] = result.inserted_id
+    create_activity_log(actor["username"], actor["role"], "create_album_entry", f"{store.get('name')} 추억 앨범 등록")
+    return serialize_store_album_entry(entry)
+
+
+def create_guestbook_entry(store_id: str, actor: dict, data: GuestbookEntryCreate):
+    if actor.get("role") != "customer":
+        raise HTTPException(status_code=403, detail="손님만 방명록을 작성할 수 있습니다.")
+    if not data.message.strip():
+        raise HTTPException(status_code=400, detail="내용을 입력하세요.")
+
+    store = get_store_or_404(store_id)
+    entry = {
+        "store_id": store["_id"],
+        "username": actor["username"],
+        "author_name": actor["username"],
+        "message": data.message.strip(),
+        "created_at": now_utc(),
+    }
+    result = db.store_guestbook_entries.insert_one(entry)
+    entry["_id"] = result.inserted_id
+    create_activity_log(actor["username"], "customer", "create_guestbook", f"{store.get('name')} 방명록 작성")
+    return serialize_store_guestbook_entry(entry)
 
 
 def get_personalized_feed(actor: dict):
@@ -2042,6 +2432,7 @@ def get_store_stats(actor: dict):
 
     orders = list(db.orders.find({"store_id": store["_id"]}).sort("created_at", -1))
     completed_orders = [order for order in orders if order.get("status") == "completed"]
+    support_counts = get_store_support_counts(store["_id"])
 
     return {
         "todaySales": sum(order.get("total_price", 0) for order in completed_orders if is_today(order.get("created_at"))),
@@ -2051,6 +2442,9 @@ def get_store_stats(actor: dict):
         "cancelledOrders": len([order for order in orders if order.get("status") == "cancelled"]),
         "pendingSettlement": store.get("pendingSettlement", 0),
         "balance": store.get("balance", 0),
+        "likes": support_counts["likes"],
+        "cheers": support_counts["cheers"],
+        "regulars": support_counts["regulars"],
         "orders": [serialize_order(order) for order in orders[:20]],
     }
 
@@ -2061,10 +2455,17 @@ def get_store_my_info(actor: dict):
         raise HTTPException(status_code=404, detail="Store not found")
 
     menus = [serialize_menu(menu) for menu in db.menus.find({"store_id": store["_id"]}).sort("name", 1)]
+    support_counts = get_store_support_counts(store["_id"])
     return {
         **serialize_store(store, include_internal=True),
         "menus": menus,
         "currentOrderCount": get_store_current_order_count(store["_id"]),
+        "communityStats": {
+            **support_counts,
+            "stories": db.store_stories.count_documents({"store_id": store["_id"]}),
+            "albums": db.store_album_entries.count_documents({"store_id": store["_id"]}),
+            "guestbook": db.store_guestbook_entries.count_documents({"store_id": store["_id"]}),
+        },
         "topupRequests": [
             serialize_topup_request(item)
             for item in db.topup_requests.find({"store_id": store["_id"]}).sort("created_at", -1).limit(10)

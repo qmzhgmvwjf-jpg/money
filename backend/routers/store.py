@@ -4,16 +4,27 @@ from core.security import require_roles
 from services.platform_service import (
     ContentPostCreate,
     ContentPostUpdate,
+    AlbumEntryCreate,
+    GuestbookEntryCreate,
+    RegularNoteCreate,
+    StoreStoryCreate,
+    StoreStoryUpdate,
     StoreSettingsUpdate,
     StoreTopupRequestCreate,
     StoreWithdrawalRequestCreate,
     StoreTimeUpdate,
     ToggleAutoAcceptPayload,
     ToggleOpenPayload,
+    create_album_entry,
+    create_guestbook_entry,
+    create_regular_note,
     create_store_content_post,
+    create_store_story,
     delete_store_content_post,
+    delete_store_story,
     get_personalized_feed,
     get_public_stores,
+    get_store_community,
     get_store_content_posts,
     get_store_finance,
     get_store_my_info,
@@ -22,8 +33,10 @@ from services.platform_service import (
     request_store_topup,
     request_store_withdrawal,
     set_store_time,
+    toggle_store_support,
     toggle_store_auto_accept,
     toggle_store_open,
+    update_store_story,
     update_store_content_post,
     update_store_settings,
 )
@@ -34,6 +47,75 @@ router = APIRouter()
 @router.get("/stores")
 def public_stores():
     return get_public_stores()
+
+
+@router.get("/stores/{store_id}/community")
+def store_community(store_id: str, user=Depends(require_roles(["customer", "store", "admin"]))):
+    return get_store_community(store_id, user)
+
+
+@router.post("/stores/{store_id}/community/support/{support_type}")
+def support_store_community(
+    store_id: str,
+    support_type: str,
+    user=Depends(require_roles(["customer"])),
+):
+    return toggle_store_support(store_id, user, support_type)
+
+
+@router.post("/stores/{store_id}/community/stories")
+def post_store_story(
+    store_id: str,
+    data: StoreStoryCreate,
+    user=Depends(require_roles(["store"])),
+):
+    return create_store_story(store_id, user, data)
+
+
+@router.put("/stores/{store_id}/community/stories/{story_id}")
+def patch_store_story(
+    store_id: str,
+    story_id: str,
+    data: StoreStoryUpdate,
+    user=Depends(require_roles(["store"])),
+):
+    return update_store_story(story_id, user, data)
+
+
+@router.delete("/stores/{store_id}/community/stories/{story_id}")
+def remove_store_story(
+    store_id: str,
+    story_id: str,
+    user=Depends(require_roles(["store"])),
+):
+    return delete_store_story(story_id, user)
+
+
+@router.post("/stores/{store_id}/community/regular-notes")
+def post_regular_note(
+    store_id: str,
+    data: RegularNoteCreate,
+    user=Depends(require_roles(["customer"])),
+):
+    return create_regular_note(store_id, user, data)
+
+
+@router.post("/stores/{store_id}/community/albums")
+def post_album_entry(
+    store_id: str,
+    data: AlbumEntryCreate,
+    user=Depends(require_roles(["customer", "store"])),
+):
+    return create_album_entry(store_id, user, data)
+
+
+@router.post("/stores/{store_id}/community/guestbook")
+def post_guestbook_entry(
+    store_id: str,
+    data: GuestbookEntryCreate,
+    user=Depends(require_roles(["customer"])),
+):
+    return create_guestbook_entry(store_id, user, data)
 
 
 @router.get("/feed")

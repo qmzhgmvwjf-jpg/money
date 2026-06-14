@@ -265,6 +265,27 @@
   gap: var(--spacing-3);
 }
 
+.community-hero {
+  background:
+    linear-gradient(180deg, rgba(255, 248, 240, 0.96), rgba(255, 255, 255, 0.96)),
+    #fff;
+}
+
+.community-story-card,
+.community-hero {
+  border-color: rgba(251, 191, 36, 0.18);
+}
+
+.community-image {
+  width: 100%;
+  min-height: 180px;
+  border-radius: 20px;
+  background-size: cover;
+  background-position: center;
+  margin: 12px 0;
+  box-shadow: var(--shadow-soft);
+}
+
 .short-feed-card__footer .ui-button {
   flex: 1;
 }

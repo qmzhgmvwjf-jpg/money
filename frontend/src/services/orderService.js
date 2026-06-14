@@ -3,6 +3,21 @@ import api from "./api";
 export const orderService = {
   getPublicStores: () => api.get("/stores").then((res) => res.data),
   getFeed: () => api.get("/feed").then((res) => res.data),
+  getStoreCommunity: (storeId) => api.get(`/stores/${storeId}/community`).then((res) => res.data),
+  toggleStoreSupport: (storeId, supportType) =>
+    api.post(`/stores/${storeId}/community/support/${supportType}`).then((res) => res.data),
+  createRegularNote: (storeId, payload) =>
+    api.post(`/stores/${storeId}/community/regular-notes`, payload).then((res) => res.data),
+  createAlbumEntry: (storeId, payload) =>
+    api.post(`/stores/${storeId}/community/albums`, payload).then((res) => res.data),
+  createGuestbookEntry: (storeId, payload) =>
+    api.post(`/stores/${storeId}/community/guestbook`, payload).then((res) => res.data),
+  createStoreStory: (storeId, payload) =>
+    api.post(`/stores/${storeId}/community/stories`, payload).then((res) => res.data),
+  updateStoreStory: (storeId, storyId, payload) =>
+    api.put(`/stores/${storeId}/community/stories/${storyId}`, payload).then((res) => res.data),
+  deleteStoreStory: (storeId, storyId) =>
+    api.delete(`/stores/${storeId}/community/stories/${storyId}`).then((res) => res.data),
   getMenus: (storeId) =>
     api
       .get(storeId ? `/menus?store_id=${storeId}` : "/menus")

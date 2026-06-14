@@ -19,6 +19,7 @@ const tabs = [
   { key: "home", label: "메인", icon: "🏪" },
   { key: "menus", label: "메뉴", icon: "🍽️" },
   { key: "content", label: "쇼츠", icon: "🎬" },
+  { key: "community", label: "커뮤니티", icon: "❤️" },
   { key: "finance", label: "정산", icon: "💰" },
   { key: "settings", label: "설정", icon: "⚙️" },
 ];
@@ -33,6 +34,7 @@ function StorePage() {
   const [menuForm, setMenuForm] = useState({ name: "", price: "" });
   const [editingMenuId, setEditingMenuId] = useState(null);
   const [contentPosts, setContentPosts] = useState([]);
+  const [community, setCommunity] = useState(null);
   const [contentForm, setContentForm] = useState({
     title: "",
     caption: "",
@@ -44,6 +46,18 @@ function StorePage() {
     eventLabel: "",
   });
   const [editingContentId, setEditingContentId] = useState(null);
+  const [storyForm, setStoryForm] = useState({
+    title: "",
+    content: "",
+    imageUrl: "",
+    storyType: "today",
+  });
+  const [editingStoryId, setEditingStoryId] = useState(null);
+  const [albumEntryForm, setAlbumEntryForm] = useState({
+    title: "",
+    caption: "",
+    imageUrl: "",
+  });
   const [settingsForm, setSettingsForm] = useState({
     name: "",
     description: "",
@@ -113,12 +127,20 @@ function StorePage() {
     setContentPosts(data);
   }, []);
 
+  const fetchCommunity = useCallback(async () => {
+    const storeId = localStorage.getItem("storeId");
+    if (!storeId) return;
+    const data = await orderService.getStoreCommunity(storeId);
+    setCommunity(data);
+  }, []);
+
   usePolling(fetchOrders, 3000);
   usePolling(fetchStats, 5000);
   usePolling(fetchStoreInfo, 5000);
   usePolling(fetchFinance, 7000);
   usePolling(fetchNotices, 7000);
   usePolling(fetchContentPosts, 7000);
+  usePolling(fetchCommunity, 7000);
 
   const currentOrders = useMemo(
     () => orders.filter((order) => order.status === "pending"),
@@ -231,6 +253,43 @@ function StorePage() {
     });
     showToast(editingContentId ? "쇼츠를 수정했습니다" : "쇼츠를 등록했습니다", "success");
     fetchContentPosts();
+  };
+
+  const submitStory = async () => {
+    if (!storeInfo?._id) return;
+    if (!storyForm.title.trim() || !storyForm.content.trim()) {
+      showToast("제목과 이야기를 입력하세요", "danger");
+      return;
+    }
+
+    if (editingStoryId) {
+      await orderService.updateStoreStory(storeInfo._id, editingStoryId, storyForm);
+    } else {
+      await orderService.createStoreStory(storeInfo._id, storyForm);
+    }
+
+    setEditingStoryId(null);
+    setStoryForm({
+      title: "",
+      content: "",
+      imageUrl: "",
+      storyType: "today",
+    });
+    showToast(editingStoryId ? "가게 이야기를 수정했습니다" : "가게 이야기를 등록했습니다", "success");
+    fetchCommunity();
+  };
+
+  const submitAlbumEntry = async () => {
+    if (!storeInfo?._id) return;
+    if (!albumEntryForm.title.trim() || !albumEntryForm.caption.trim()) {
+      showToast("제목과 추억 내용을 입력하세요", "danger");
+      return;
+    }
+
+    await orderService.createAlbumEntry(storeInfo._id, albumEntryForm);
+    setAlbumEntryForm({ title: "", caption: "", imageUrl: "" });
+    showToast("가게 추억 앨범에 등록했습니다", "success");
+    fetchCommunity();
   };
 
   const renderOrderCard = (order) => (
@@ -480,6 +539,196 @@ function StorePage() {
               </div>
             </Card>
           ))}
+        </div>
+      )}
+
+      {tab === "community" && (
+        <div className="page-stack">
+          <div className="dashboard-grid">
+            <Card className="metric-card">
+              <h3>{storeInfo?.communityStats?.likes || 0}</h3>
+              <p>좋아요</p>
+            </Card>
+            <Card className="metric-card">
+              <h3>{storeInfo?.communityStats?.cheers || 0}</h3>
+              <p>응원</p>
+            </Card>
+            <Card className="metric-card">
+              <h3>{storeInfo?.communityStats?.regulars || 0}</h3>
+              <p>단골 수</p>
+            </Card>
+            <Card className="metric-card">
+              <h3>{storeInfo?.communityStats?.albums || 0}</h3>
+              <p>추억 앨범</p>
+            </Card>
+          </div>
+
+          <Card>
+            <div className="section-heading">
+              <div>
+                <h3>우리 가게 이야기</h3>
+                <p>가게를 시작한 이유, 오늘의 이야기, 감사 인사를 따뜻하게 전해보세요.</p>
+              </div>
+              <Badge tone="primary">{community?.ownerStories?.length || 0}편</Badge>
+            </div>
+            <div className="auth-form" style={{ marginTop: 16 }}>
+              <Input
+                label="이야기 제목"
+                value={storyForm.title}
+                onChange={(event) => setStoryForm((prev) => ({ ...prev, title: event.target.value }))}
+              />
+              <Input
+                label="이야기 성격"
+                as="select"
+                value={storyForm.storyType}
+                onChange={(event) => setStoryForm((prev) => ({ ...prev, storyType: event.target.value }))}
+              >
+                <option value="today">오늘의 이야기</option>
+                <option value="history">가게 역사</option>
+                <option value="menu">신메뉴 개발</option>
+                <option value="thanks">감사 인사</option>
+              </Input>
+              <Input
+                label="사진 URL"
+                value={storyForm.imageUrl}
+                onChange={(event) => setStoryForm((prev) => ({ ...prev, imageUrl: event.target.value }))}
+              />
+              <Input
+                label="본문"
+                as="textarea"
+                rows={5}
+                value={storyForm.content}
+                onChange={(event) => setStoryForm((prev) => ({ ...prev, content: event.target.value }))}
+              />
+              <div className="list-actions">
+                <Button onClick={submitStory}>{editingStoryId ? "이야기 수정" : "이야기 등록"}</Button>
+                {editingStoryId && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setEditingStoryId(null);
+                      setStoryForm({
+                        title: "",
+                        content: "",
+                        imageUrl: "",
+                        storyType: "today",
+                      });
+                    }}
+                  >
+                    취소
+                  </Button>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          {(community?.ownerStories || []).map((story) => (
+            <Card key={story._id} className="mini-card">
+              <div className="section-heading">
+                <div>
+                  <strong>{story.title}</strong>
+                  <p>{story.story_type} · {formatDateTime(story.created_at)}</p>
+                </div>
+                <Badge tone="primary">스토리</Badge>
+              </div>
+              {story.image_url && <div className="community-image" style={{ backgroundImage: `url(${story.image_url})` }} />}
+              <p>{story.content}</p>
+              <div className="list-actions" style={{ marginTop: 12 }}>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setEditingStoryId(story._id);
+                    setStoryForm({
+                      title: story.title || "",
+                      content: story.content || "",
+                      imageUrl: story.image_url || "",
+                      storyType: story.story_type || "today",
+                    });
+                  }}
+                >
+                  수정
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={async () => {
+                    await orderService.deleteStoreStory(storeInfo._id, story._id);
+                    showToast("이야기를 삭제했습니다", "success");
+                    fetchCommunity();
+                  }}
+                >
+                  삭제
+                </Button>
+              </div>
+            </Card>
+          ))}
+
+          <Card>
+            <div className="section-heading">
+              <h3>추억 앨범 올리기</h3>
+              <p>단골과 함께 쌓인 장면을 사진과 짧은 이야기로 남겨보세요.</p>
+            </div>
+            <div className="auth-form" style={{ marginTop: 16 }}>
+              <Input
+                label="제목"
+                value={albumEntryForm.title}
+                onChange={(event) => setAlbumEntryForm((prev) => ({ ...prev, title: event.target.value }))}
+              />
+              <Input
+                label="짧은 글"
+                as="textarea"
+                rows={3}
+                value={albumEntryForm.caption}
+                onChange={(event) => setAlbumEntryForm((prev) => ({ ...prev, caption: event.target.value }))}
+              />
+              <Input
+                label="사진 URL"
+                value={albumEntryForm.imageUrl}
+                onChange={(event) => setAlbumEntryForm((prev) => ({ ...prev, imageUrl: event.target.value }))}
+              />
+              <Button onClick={submitAlbumEntry}>추억 등록</Button>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="section-heading">
+              <h3>손님이 남긴 이야기</h3>
+              <Badge tone="secondary">{community?.regularNotes?.length || 0}개</Badge>
+            </div>
+            {(community?.regularNotes || []).length === 0 && (
+              <EmptyState title="아직 단골 한마디가 없습니다" description="손님이 마음을 남기면 이곳에 모입니다." />
+            )}
+            {(community?.regularNotes || []).map((note) => (
+              <Card key={note._id} className="mini-card">
+                <div className="section-heading">
+                  <div>
+                    <strong>{note.author_name}</strong>
+                    <p>{formatDateTime(note.created_at)}</p>
+                  </div>
+                  <Badge tone="secondary">{note.regular_level}</Badge>
+                </div>
+                <p>{note.message}</p>
+              </Card>
+            ))}
+          </Card>
+
+          <Card>
+            <div className="section-heading">
+              <h3>방명록</h3>
+              <Badge tone="secondary">{community?.guestbookEntries?.length || 0}개</Badge>
+            </div>
+            {(community?.guestbookEntries || []).length === 0 && (
+              <EmptyState title="아직 방명록이 없습니다" description="첫 손님의 인사가 도착하면 여기서 볼 수 있어요." />
+            )}
+            {(community?.guestbookEntries || []).map((entry) => (
+              <Card key={entry._id} className="mini-card">
+                <div className="section-heading">
+                  <strong>{entry.author_name}</strong>
+                  <Badge tone="secondary">{formatDateTime(entry.created_at)}</Badge>
+                </div>
+                <p>{entry.message}</p>
+              </Card>
+            ))}
+          </Card>
         </div>
       )}
 
