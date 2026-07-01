@@ -13,6 +13,7 @@ import { orderService } from "../services/orderService";
 import { getCartItems } from "../utils/cart";
 import { formatCurrency, getStoreVisual, inferCategory } from "../utils/format";
 import { usePolling } from "../hooks/usePolling";
+import { useToast } from "../hooks/useToast";
 
 const navItems = [
   { key: "home", label: "홈", icon: "🏠" },
@@ -26,16 +27,20 @@ function CustomerPage() {
   const navigate = useNavigate();
   const [stores, setStores] = useState([]);
   const [feed, setFeed] = useState([]);
+  const [retention, setRetention] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { showToast, ToastViewport } = useToast();
 
   const fetchHome = useCallback(async () => {
     try {
-      const [storeData, feedData] = await Promise.all([
+      const [storeData, feedData, retentionData] = await Promise.all([
         orderService.getPublicStores(),
         orderService.getFeed(),
+        orderService.getRetentionSummary(),
       ]);
       setStores(storeData);
       setFeed(feedData);
+      setRetention(retentionData);
     } finally {
       setLoading(false);
     }
@@ -62,6 +67,21 @@ function CustomerPage() {
   };
 
   const openStore = (storeId) => navigate(`/customer/store/${storeId}`);
+
+  const claimLuckyBox = async () => {
+    try {
+      const data = await orderService.claimLuckyBox();
+      await fetchHome();
+      showToast(
+        data.alreadyClaimed
+          ? `${data.reward?.title || "오늘의 보상"}은 이미 받았어요`
+          : `${data.reward?.title || "행운 보상"} 획득!`,
+        "success"
+      );
+    } catch (error) {
+      showToast(error.response?.data?.detail || "럭키박스를 여는 데 실패했습니다", "danger");
+    }
+  };
 
   return (
     <AppShell mobile>
@@ -109,6 +129,62 @@ function CustomerPage() {
               </div>
             </div>
           </Card>
+
+          <Card className="retro-event-card">
+            <div className="section-heading">
+              <div>
+                <h3>오늘의 럭키박스</h3>
+                <p>오늘은 어떤 무료 혜택이나 스티커가 뜰지 확인해보세요.</p>
+              </div>
+              <Badge tone="primary">{retention?.todayLuckyBoxClaimed ? "수령 완료" : "열기 가능"}</Badge>
+            </div>
+            <div className="dashboard-grid" style={{ marginTop: 16 }}>
+              <Card className="mini-card metric-card">
+                <h3>{retention?.stickerBook?.earned?.length || 0}</h3>
+                <p>모은 스티커</p>
+              </Card>
+              <Card className="mini-card metric-card">
+                <h3>{retention?.availableRewards?.length || 0}</h3>
+                <p>사용 가능한 혜택</p>
+              </Card>
+              <Card className="mini-card metric-card">
+                <h3>{retention?.followedStores?.length || 0}</h3>
+                <p>팔로우한 가게</p>
+              </Card>
+            </div>
+            <div className="list-actions" style={{ marginTop: 16 }}>
+              <Button onClick={claimLuckyBox}>
+                {retention?.todayLuckyBoxClaimed ? "오늘 보상 다시 보기" : "럭키박스 열기"}
+              </Button>
+              <Button variant="secondary" onClick={() => navigate("/customer/stickers")}>
+                스티커북 보기
+              </Button>
+            </div>
+            {retention?.todayLuckyReward && (
+              <Card className="mini-card" style={{ marginTop: 16 }}>
+                <strong>{retention.todayLuckyReward.emoji} {retention.todayLuckyReward.title}</strong>
+                <p>{retention.todayLuckyReward.description}</p>
+              </Card>
+            )}
+          </Card>
+
+          {!!retention?.events?.length && (
+            <>
+              <div className="section-heading">
+                <h3>오늘의 이벤트</h3>
+                <p>가볍게 눌러보고 혜택을 챙길 수 있는 이벤트만 모아뒀어요.</p>
+              </div>
+              <div className="reco-rail">
+                {retention.events.map((event) => (
+                  <Card key={event._id} className="reco-rail__card retro-chip-card">
+                    <strong>{event.emoji} {event.title}</strong>
+                    <p>{event.description}</p>
+                    <Badge tone={event.is_active ? "success" : "secondary"}>{event.reward_label}</Badge>
+                  </Card>
+                ))}
+              </div>
+            </>
+          )}
 
           <div className="section-heading">
             <h3>오늘 추천 가게</h3>
@@ -175,6 +251,7 @@ function CustomerPage() {
       )}
 
       <BottomNavigation items={navItems} activeKey="home" onChange={handleNav} />
+      <ToastViewport />
     </AppShell>
   );
 }

@@ -21,6 +21,14 @@ const tabs = [
   { key: "profile", label: "내정보", icon: "👤" },
 ];
 
+const driverStatusLabels = {
+  idle: "대기중",
+  delivering: "배달중",
+  resting: "휴식중",
+  offline: "오프라인",
+  suspended: "정지",
+};
+
 function RiderPage() {
   const navigate = useNavigate();
   const username = localStorage.getItem("username");
@@ -92,9 +100,16 @@ function RiderPage() {
   usePolling(fetchNotices, 7000, tab === "profile");
 
   const toggleOnline = async () => {
-    const nextStatus = dashboard?.onlineStatus === "online" ? "offline" : "online";
-    await orderService.updateDriverOnlineStatus({ onlineStatus: nextStatus });
-    showToast(nextStatus === "online" ? "온라인으로 전환했습니다" : "오프라인으로 전환했습니다", "success");
+    const nextStatus = dashboard?.driverStatus === "offline" ? "idle" : "offline";
+    await orderService.updateDriverOnlineStatus({ driverStatus: nextStatus });
+    showToast(nextStatus === "idle" ? "대기중으로 전환했습니다" : "오프라인으로 전환했습니다", "success");
+    fetchDashboard();
+    fetchSettings();
+  };
+
+  const setDriverStatus = async (driverStatus) => {
+    await orderService.updateDriverOnlineStatus({ driverStatus });
+    showToast(`기사 상태를 ${driverStatusLabels[driverStatus] || driverStatus}로 변경했습니다`, "success");
     fetchDashboard();
     fetchSettings();
   };
@@ -166,7 +181,7 @@ function RiderPage() {
               <p>오늘 수익</p>
             </Card>
             <Card className="metric-card">
-              <h3>{dashboard?.onlineStatus === "online" ? "온라인" : "오프라인"}</h3>
+              <h3>{driverStatusLabels[dashboard?.driverStatus] || "오프라인"}</h3>
               <p>현재 상태</p>
             </Card>
             <Card className="metric-card">
@@ -177,8 +192,14 @@ function RiderPage() {
 
           <Card>
             <div className="list-actions">
-              <Button variant={dashboard?.onlineStatus === "online" ? "danger" : "primary"} onClick={toggleOnline}>
-                {dashboard?.onlineStatus === "online" ? "오프라인 전환" : "온라인 전환"}
+              <Button variant={dashboard?.driverStatus === "offline" ? "primary" : "secondary"} onClick={() => setDriverStatus("idle")}>
+                대기중
+              </Button>
+              <Button variant={dashboard?.driverStatus === "resting" ? "primary" : "secondary"} onClick={() => setDriverStatus("resting")}>
+                휴식중
+              </Button>
+              <Button variant={dashboard?.driverStatus === "offline" ? "danger" : "secondary"} onClick={toggleOnline}>
+                오프라인
               </Button>
               <Button variant={settings?.dispatchEnabled ? "primary" : "secondary"} onClick={toggleDispatch}>
                 배차 수신 {settings?.dispatchEnabled ? "끄기" : "켜기"}
@@ -272,7 +293,7 @@ function RiderPage() {
           <Card>
             <div className="section-heading">
               <h3>내 정보</h3>
-              <Badge tone="secondary">{settings?.onlineStatus || "offline"}</Badge>
+              <Badge tone="secondary">{driverStatusLabels[settings?.driverStatus] || "오프라인"}</Badge>
             </div>
             <div className="auth-form" style={{ marginTop: 16 }}>
               <Input label="전화번호" value={settingsForm.phone} onChange={(event) => setSettingsForm((prev) => ({ ...prev, phone: event.target.value }))} />
@@ -283,8 +304,11 @@ function RiderPage() {
                 <Button variant={settings?.dispatchEnabled ? "primary" : "secondary"} onClick={toggleDispatch}>
                   배차 수신 {settings?.dispatchEnabled ? "ON" : "OFF"}
                 </Button>
-                <Button variant={dashboard?.onlineStatus === "online" ? "danger" : "primary"} onClick={toggleOnline}>
-                  {dashboard?.onlineStatus === "online" ? "오프라인" : "온라인"}
+                <Button variant={settings?.driverStatus === "resting" ? "primary" : "secondary"} onClick={() => setDriverStatus("resting")}>
+                  휴식중
+                </Button>
+                <Button variant={dashboard?.driverStatus === "offline" ? "danger" : "primary"} onClick={toggleOnline}>
+                  {dashboard?.driverStatus === "offline" ? "대기 전환" : "오프라인"}
                 </Button>
               </div>
               <Button block onClick={saveSettings}>설정 저장</Button>

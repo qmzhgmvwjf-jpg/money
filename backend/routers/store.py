@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 
-from core.security import require_roles
-from services.platform_service import (
+from backend.core.security import require_roles
+from backend.services.platform_service import (
     ContentPostCreate,
     ContentPostUpdate,
     AlbumEntryCreate,
@@ -33,6 +33,7 @@ from services.platform_service import (
     request_store_topup,
     request_store_withdrawal,
     set_store_time,
+    toggle_store_follow,
     toggle_store_support,
     toggle_store_auto_accept,
     toggle_store_open,
@@ -61,6 +62,11 @@ def support_store_community(
     user=Depends(require_roles(["customer"])),
 ):
     return toggle_store_support(store_id, user, support_type)
+
+
+@router.post("/stores/{store_id}/follow")
+def follow_store(store_id: str, user=Depends(require_roles(["customer"]))):
+    return toggle_store_follow(store_id, user)
 
 
 @router.post("/stores/{store_id}/community/stories")

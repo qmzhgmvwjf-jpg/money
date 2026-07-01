@@ -33,6 +33,7 @@ function LoginPage() {
       if (data.storeName) localStorage.setItem("storeName", data.storeName);
       if (data.storeId) localStorage.setItem("storeId", data.storeId);
       if (data.onlineStatus) localStorage.setItem("onlineStatus", data.onlineStatus);
+      if (data.driverStatus) localStorage.setItem("driverStatus", data.driverStatus);
       if (typeof data.dispatchEnabled !== "undefined") {
         localStorage.setItem("dispatchEnabled", String(data.dispatchEnabled));
       }

@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, Query
 
-from core.security import require_roles
-from services.platform_service import (
+from backend.core.security import require_roles
+from backend.services.platform_service import (
     AdminDecisionPayload,
+    AppEventCreate,
+    AppEventUpdate,
     BalanceAdjustPayload,
     CustomerUpdate,
     DriverUpdate,
@@ -14,11 +16,16 @@ from services.platform_service import (
     approve_store_withdrawal_request,
     adjust_driver_balance,
     adjust_store_balance,
+    assign_driver_to_order,
     create_driver,
+    create_admin_event,
     create_store,
     delete_driver,
+    delete_admin_event,
     delete_store,
+    get_admin_events,
     get_finance_overview,
+    get_admin_dispatch_board,
     get_admin_stores,
     get_admin_orders,
     get_customers,
@@ -31,7 +38,9 @@ from services.platform_service import (
     reject_topup_request,
     reject_withdrawal_request,
     reject_store_withdrawal_request,
+    ManualDispatchPayload,
     update_customer,
+    update_admin_event,
     update_driver,
     update_store,
 )
@@ -42,6 +51,21 @@ router = APIRouter()
 @router.get("/admin/orders")
 def admin_orders(filter: str = Query(default="all"), user=Depends(require_roles(["admin"]))):
     return get_admin_orders(filter)
+
+
+@router.get("/admin/dispatch-board")
+def admin_dispatch_board(user=Depends(require_roles(["admin"]))):
+    return get_admin_dispatch_board()
+
+
+@router.post("/admin/orders/{order_id}/assign-driver")
+def admin_assign_driver(order_id: str, data: ManualDispatchPayload, user=Depends(require_roles(["admin"]))):
+    return assign_driver_to_order(order_id, data, user["username"], False)
+
+
+@router.post("/admin/orders/{order_id}/reassign-driver")
+def admin_reassign_driver(order_id: str, data: ManualDispatchPayload, user=Depends(require_roles(["admin"]))):
+    return assign_driver_to_order(order_id, data, user["username"], True)
 
 
 @router.get("/admin/stores")
@@ -162,3 +186,23 @@ def admin_adjust_driver_balance(driver_id: str, data: BalanceAdjustPayload, user
 @router.get("/admin/transactions")
 def transactions(limit: int = Query(default=100, ge=1, le=500), user=Depends(require_roles(["admin"]))):
     return get_transactions(limit)
+
+
+@router.get("/admin/events")
+def admin_events(user=Depends(require_roles(["admin"]))):
+    return get_admin_events()
+
+
+@router.post("/admin/events")
+def post_admin_event(data: AppEventCreate, user=Depends(require_roles(["admin"]))):
+    return create_admin_event(data, user["username"])
+
+
+@router.put("/admin/events/{event_id}")
+def put_admin_event(event_id: str, data: AppEventUpdate, user=Depends(require_roles(["admin"]))):
+    return update_admin_event(event_id, data, user["username"])
+
+
+@router.delete("/admin/events/{event_id}")
+def remove_admin_event(event_id: str, user=Depends(require_roles(["admin"]))):
+    return delete_admin_event(event_id, user["username"])

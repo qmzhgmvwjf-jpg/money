@@ -14,6 +14,7 @@ import CustomerOrdersPage from "./pages/CustomerOrdersPage";
 import CustomerProfilePage from "./pages/CustomerProfilePage";
 import CustomerSearchPage from "./pages/CustomerSearchPage";
 import CustomerShortsPage from "./pages/CustomerShortsPage";
+import CustomerStickerBookPage from "./pages/CustomerStickerBookPage";
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
         <Route path="/customer/cart" element={<CartPage />} />
         <Route path="/customer/orders" element={<CustomerOrdersPage />} />
         <Route path="/customer/profile" element={<CustomerProfilePage />} />
+        <Route path="/customer/stickers" element={<CustomerStickerBookPage />} />
         <Route path="/store" element={<StorePage />} />
         <Route path="/tracking" element={<TrackingPage />} />
       </Routes>

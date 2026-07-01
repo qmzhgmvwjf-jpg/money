@@ -2,8 +2,16 @@ import api from "./api";
 
 export const orderService = {
   getPublicStores: () => api.get("/stores").then((res) => res.data),
+  getMyProfile: () => api.get("/me").then((res) => res.data),
+  updateMyProfile: (payload) => api.put("/me", payload).then((res) => res.data),
+  getRetentionSummary: () => api.get("/me/retention").then((res) => res.data),
+  getStickerBook: () => api.get("/me/sticker-book").then((res) => res.data),
+  getMyRewards: () => api.get("/me/rewards").then((res) => res.data),
+  getMyFollows: () => api.get("/me/follows").then((res) => res.data),
+  claimLuckyBox: () => api.post("/me/lucky-box/claim").then((res) => res.data),
   getFeed: () => api.get("/feed").then((res) => res.data),
   getStoreCommunity: (storeId) => api.get(`/stores/${storeId}/community`).then((res) => res.data),
+  toggleStoreFollow: (storeId) => api.post(`/stores/${storeId}/follow`).then((res) => res.data),
   toggleStoreSupport: (storeId, supportType) =>
     api.post(`/stores/${storeId}/community/support/${supportType}`).then((res) => res.data),
   createRegularNote: (storeId, payload) =>

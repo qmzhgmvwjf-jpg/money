@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../layouts/AppShell";
 import Header from "../components/common/Header";
@@ -27,15 +27,28 @@ function CartPage() {
   const [phone, setPhone] = useState(localStorage.getItem("phone") || "");
   const [address, setAddress] = useState(localStorage.getItem("address") || "");
   const [paymentMethod, setPaymentMethod] = useState("card");
+  const [rewards, setRewards] = useState([]);
+  const [selectedRewardId, setSelectedRewardId] = useState("");
   const [loading, setLoading] = useState(false);
   const { showToast, ToastViewport } = useToast();
+
+  useEffect(() => {
+    orderService.getMyRewards().then(setRewards).catch(() => setRewards([]));
+  }, []);
 
   const menuTotal = useMemo(
     () => cart.reduce((sum, item) => sum + Number(item.price || 0), 0),
     [cart]
   );
   const deliveryFee = Number(cart[0]?.deliveryFee || 0);
-  const totalPrice = menuTotal + deliveryFee;
+  const selectedReward = rewards.find((reward) => reward._id === selectedRewardId) || null;
+  const rewardDiscount = useMemo(() => {
+    if (!selectedReward) return 0;
+    if (selectedReward.reward_type === "discount") return Number(selectedReward.reward_value || 0);
+    if (["free_delivery", "store_fee_free"].includes(selectedReward.reward_type)) return deliveryFee;
+    return 0;
+  }, [selectedReward, deliveryFee]);
+  const totalPrice = Math.max(0, menuTotal + deliveryFee - rewardDiscount);
 
   const removeItem = (index) => {
     const next = cart.filter((_, itemIndex) => itemIndex !== index);
@@ -60,7 +73,9 @@ function CartPage() {
       await orderService.createOrder({
         store_id: cart[0].store_id,
         address,
+        phone,
         paymentMethod,
+        rewardId: selectedRewardId || null,
         items: cart.map((item) => ({ _id: item._id, name: item.name, price: item.price })),
       });
       clearCartItems();
@@ -125,9 +140,23 @@ function CartPage() {
                 <option value="kakao_pay">카카오페이</option>
                 <option value="naver_pay">네이버페이</option>
               </Input>
+              <Input
+                label="사용할 혜택"
+                as="select"
+                value={selectedRewardId}
+                onChange={(event) => setSelectedRewardId(event.target.value)}
+              >
+                <option value="">혜택 사용 안 함</option>
+                {rewards.map((reward) => (
+                  <option key={reward._id} value={reward._id}>
+                    {reward.emoji} {reward.title}
+                  </option>
+                ))}
+              </Input>
               <Card className="mini-card">
                 <div>메뉴 금액: {formatCurrency(menuTotal)}</div>
                 <div>배달비: {formatCurrency(deliveryFee)}</div>
+                <div>혜택 할인: {formatCurrency(rewardDiscount)}</div>
                 <div>총 결제금액: {formatCurrency(totalPrice)}</div>
               </Card>
               <Button block loading={loading} onClick={submitOrder}>

@@ -96,6 +96,16 @@ function CustomerStoreDetailPage() {
     }
   };
 
+  const toggleFollow = async () => {
+    try {
+      const result = await orderService.toggleStoreFollow(storeId);
+      await refreshCommunity();
+      showToast(result.following ? "가게를 팔로우했습니다" : "가게 팔로우를 해제했습니다", "success");
+    } catch (error) {
+      showToast(error.response?.data?.detail || "팔로우 처리 실패", "danger");
+    }
+  };
+
   const submitRegularNote = async () => {
     if (!regularNote.trim()) return;
     try {
@@ -173,7 +183,18 @@ function CustomerStoreDetailPage() {
                   <Badge tone="secondary">최소주문 {formatCurrency(store.minOrderAmount)}</Badge>
                   <Badge tone="secondary">배달비 {formatCurrency(store.deliveryFee)}</Badge>
                   <Badge tone="secondary">{community?.viewer?.regularLevel || "일반 손님"}</Badge>
+                  <Badge tone="secondary">팔로워 {community?.stats?.followers || 0}</Badge>
                 </div>
+                {role === "customer" && (
+                  <div className="list-actions">
+                    <Button
+                      variant={community?.viewer?.followingStore ? "primary" : "secondary"}
+                      onClick={toggleFollow}
+                    >
+                      {community?.viewer?.followingStore ? "❤️ 팔로우중" : "🤍 팔로우"}
+                    </Button>
+                  </div>
+                )}
               </div>
             </Card>
           )}
@@ -298,7 +319,7 @@ function CustomerStoreDetailPage() {
 
               <Card>
                 <div className="section-heading">
-                  <h3>단골 랭킹</h3>
+                  <h3>이번 달 단골 TOP 10</h3>
                   <Badge tone="secondary">Top {community.topRegulars.length}</Badge>
                 </div>
                 {community.topRegulars.length === 0 && <div className="empty-state">아직 단골 랭킹이 없습니다.</div>}

@@ -7,10 +7,11 @@ from fastapi import HTTPException
 from jose import jwt
 from pydantic import BaseModel
 
-from core.config import (
+from backend.core.config import (
     ADMIN_ORDER_FILTERS,
     ALL_ROLES,
     ALGORITHM,
+    DRIVER_OPERATION_STATUSES,
     DRIVER_FEE_RATE,
     DRIVER_ONLINE_STATUSES,
     NOTICE_TARGETS,
@@ -20,7 +21,7 @@ from core.config import (
     STATUS_TO_KOREAN,
     STORE_ORDER_FILTERS,
 )
-from core.database import db
+from backend.core.database import db
 
 
 class LoginData(BaseModel):
@@ -73,18 +74,24 @@ class ToggleAutoAcceptPayload(BaseModel):
 class DriverUpdate(BaseModel):
     phone: str | None = None
     onlineStatus: str | None = None
+    driverStatus: str | None = None
+    dispatchEnabled: bool | None = None
+    approved: bool | None = None
 
 
 class CustomerUpdate(BaseModel):
     phone: str | None = None
     address: str | None = None
+    nickname: str | None = None
 
 
 class Order(BaseModel):
     store_id: str
     address: str | None = None
+    phone: str | None = None
     items: list[dict[str, Any]] | None = None
     paymentMethod: str = "card"
+    rewardId: str | None = None
 
 
 class Menu(BaseModel):
@@ -110,7 +117,8 @@ class NoticeUpdate(BaseModel):
 
 
 class DriverOnlineUpdate(BaseModel):
-    onlineStatus: str
+    onlineStatus: str | None = None
+    driverStatus: str | None = None
 
 
 class StoreSettingsUpdate(BaseModel):
@@ -142,10 +150,15 @@ class StoreWithdrawalRequestCreate(BaseModel):
 class DriverSettingsUpdate(BaseModel):
     phone: str | None = None
     onlineStatus: str | None = None
+    driverStatus: str | None = None
     dispatchEnabled: bool | None = None
     bankName: str | None = None
     accountNumber: str | None = None
     accountHolder: str | None = None
+
+
+class ManualDispatchPayload(BaseModel):
+    driverUsername: str
 
 
 class DriverWithdrawalRequestCreate(BaseModel):
@@ -212,6 +225,28 @@ class GuestbookEntryCreate(BaseModel):
     message: str
 
 
+class AppEventCreate(BaseModel):
+    title: str
+    description: str
+    emoji: str
+    rewardType: str
+    rewardValue: int = 0
+    kind: str = "daily"
+    isActive: bool = True
+    isHidden: bool = False
+
+
+class AppEventUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    emoji: str | None = None
+    rewardType: str | None = None
+    rewardValue: int | None = None
+    kind: str | None = None
+    isActive: bool | None = None
+    isHidden: bool | None = None
+
+
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -222,6 +257,69 @@ def to_iso(value: datetime | None) -> str | None:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.isoformat()
+
+
+def date_key(value: datetime | None = None) -> str:
+    base = value or now_utc()
+    return base.astimezone(timezone(timedelta(hours=9))).strftime("%Y-%m-%d")
+
+
+def safe_nickname(value: str | None) -> str:
+    raw = (value or "손님").strip()
+    if len(raw) <= 2:
+        return raw[0] + "*" if len(raw) == 2 else raw
+    return f"{raw[0]}{'*' * min(2, len(raw) - 2)}{raw[-1]}"
+
+
+def category_from_text(value: str) -> str:
+    lower = (value or "").lower()
+    if "치킨" in lower:
+        return "치킨"
+    if "피자" in lower:
+        return "피자"
+    if "카페" in lower or "커피" in lower or "디저트" in lower:
+        return "카페"
+    if "마라" in lower or "떡볶이" in lower or "매운" in lower:
+        return "매운맛"
+    if "분식" in lower or "김밥" in lower or "라면" in lower:
+        return "분식"
+    return "추천"
+
+
+def get_driver_active_order(username: str):
+    return db.orders.find_one(
+        {"driver_id": username, "status": {"$in": ["assigned", "delivering"]}},
+        sort=[("created_at", -1)],
+    )
+
+
+def normalize_driver_status(user: dict | None) -> str:
+    if not user:
+        return "offline"
+    explicit = user.get("driverStatus")
+    if explicit == "suspended":
+        return "suspended"
+    if explicit == "resting":
+        return "resting"
+    if explicit == "offline":
+        return "offline"
+    if get_driver_active_order(user.get("username")):
+        return "delivering"
+    if explicit in {"idle", "delivering"}:
+        return "idle" if explicit == "idle" else "delivering"
+    if user.get("onlineStatus") == "online":
+        return "idle"
+    return "offline"
+
+
+def driver_online_label(driver_status: str) -> str:
+    return "online" if driver_status in {"idle", "delivering", "resting"} else "offline"
+
+
+def get_driver_active_order_count(username: str) -> int:
+    return db.orders.count_documents(
+        {"driver_id": username, "status": {"$in": ["assigned", "delivering"]}}
+    )
 
 
 def hash_password(password: str) -> str:
@@ -293,6 +391,65 @@ SAMPLE_VIDEO_URLS = [
     "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
 ]
+
+STICKER_CATALOG = [
+    {
+        "code": "chicken_lover",
+        "emoji": "🍗",
+        "title": "치킨 러버",
+        "description": "치킨 카테고리 가게를 3번 이상 주문했어요.",
+        "collection": "치킨 컬렉션",
+    },
+    {
+        "code": "pizza_master",
+        "emoji": "🍕",
+        "title": "피자 마스터",
+        "description": "피자 가게를 3번 이상 주문했어요.",
+        "collection": "피자 컬렉션",
+    },
+    {
+        "code": "cafe_addict",
+        "emoji": "☕",
+        "title": "카페 중독자",
+        "description": "카페/디저트 가게를 3번 이상 주문했어요.",
+        "collection": "카페 컬렉션",
+    },
+    {
+        "code": "night_king",
+        "emoji": "🌙",
+        "title": "야식왕",
+        "description": "밤 10시 이후 주문을 달성했어요.",
+        "collection": "야식 컬렉션",
+    },
+    {
+        "code": "spicy_challenger",
+        "emoji": "🔥",
+        "title": "매운맛 챌린저",
+        "description": "매운 메뉴를 세 번 주문했어요.",
+        "collection": "챌린지 컬렉션",
+    },
+    {
+        "code": "regular_king",
+        "emoji": "🥇",
+        "title": "단골왕",
+        "description": "같은 가게를 다섯 번 이상 주문했어요.",
+        "collection": "단골 컬렉션",
+    },
+    {
+        "code": "attendance_fairy",
+        "emoji": "🎟️",
+        "title": "출석 요정",
+        "description": "서로 다른 날짜에 세 번 방문했어요.",
+        "collection": "출석 컬렉션",
+    },
+]
+
+REWARD_TYPE_LABELS = {
+    "free_delivery": "무료 배달",
+    "discount": "할인 쿠폰",
+    "store_fee_free": "가게 이용료 무료",
+    "sticker": "스티커 보상",
+}
 
 
 def is_today(value: datetime | None) -> bool:
@@ -437,6 +594,7 @@ def serialize_order(order: dict) -> dict:
         "phone": order.get("phone"),
         "menu_total": order.get("menu_total", 0),
         "delivery_fee": order.get("delivery_fee", 0),
+        "discount_amount": order.get("discount_amount", 0),
         "total_price": order.get("total_price", 0),
         "status": order.get("status"),
         "driver_id": order.get("driver_id"),
@@ -444,6 +602,8 @@ def serialize_order(order: dict) -> dict:
         "payment_id": order.get("payment_id"),
         "payment_method": order.get("payment_method"),
         "payment_status": order.get("payment_status"),
+        "reward_id": order.get("reward_id"),
+        "reward_title": order.get("reward_title"),
         "settlement_amount": order.get("settlement_amount", 0),
         "created_at": to_iso(order.get("created_at")),
         "status_logs": [
@@ -469,11 +629,13 @@ def serialize_user(user: dict) -> dict:
     return {
         "_id": str(user["_id"]),
         "username": user.get("username"),
+        "nickname": user.get("nickname") or safe_nickname(user.get("username")),
         "phone": user.get("phone"),
         "role": user.get("role"),
         "approved": user.get("approved", False),
         "address": user.get("address"),
         "onlineStatus": user.get("onlineStatus", "offline"),
+        "driverStatus": normalize_driver_status(user) if user.get("role") == "driver" else None,
         "dispatchEnabled": user.get("dispatchEnabled", True),
         "balance": user.get("balance", 0),
         "bankName": user.get("bankName"),
@@ -677,6 +839,66 @@ def serialize_store_guestbook_entry(item: dict) -> dict:
     }
 
 
+def serialize_sticker(item: dict) -> dict:
+    return {
+        "_id": str(item["_id"]),
+        "username": item.get("username"),
+        "code": item.get("code"),
+        "emoji": item.get("emoji"),
+        "title": item.get("title"),
+        "description": item.get("description"),
+        "collection": item.get("collection"),
+        "earned_at": to_iso(item.get("earned_at")),
+        "reason": item.get("reason"),
+    }
+
+
+def serialize_reward(item: dict) -> dict:
+    return {
+        "_id": str(item["_id"]),
+        "username": item.get("username"),
+        "source": item.get("source"),
+        "source_event_id": str(item.get("source_event_id")) if item.get("source_event_id") else None,
+        "title": item.get("title"),
+        "description": item.get("description"),
+        "emoji": item.get("emoji"),
+        "reward_type": item.get("reward_type"),
+        "reward_label": REWARD_TYPE_LABELS.get(item.get("reward_type"), item.get("reward_type")),
+        "reward_value": item.get("reward_value", 0),
+        "status": item.get("status", "active"),
+        "claim_date_key": item.get("claim_date_key"),
+        "created_at": to_iso(item.get("created_at")),
+        "used_at": to_iso(item.get("used_at")),
+    }
+
+
+def serialize_app_event(item: dict) -> dict:
+    return {
+        "_id": str(item["_id"]),
+        "title": item.get("title"),
+        "description": item.get("description"),
+        "emoji": item.get("emoji"),
+        "reward_type": item.get("reward_type"),
+        "reward_label": REWARD_TYPE_LABELS.get(item.get("reward_type"), item.get("reward_type")),
+        "reward_value": item.get("reward_value", 0),
+        "kind": item.get("kind", "daily"),
+        "is_active": item.get("is_active", True),
+        "is_hidden": item.get("is_hidden", False),
+        "created_at": to_iso(item.get("created_at")),
+    }
+
+
+def serialize_follow(item: dict) -> dict:
+    return {
+        "_id": str(item["_id"]),
+        "store_id": str(item.get("store_id")) if item.get("store_id") else None,
+        "store_name": item.get("store_name"),
+        "username": item.get("username"),
+        "nickname": item.get("nickname"),
+        "created_at": to_iso(item.get("created_at")),
+    }
+
+
 def ensure_default_admin():
     if db.users.find_one({"username": "admin"}):
         return
@@ -709,12 +931,14 @@ def create_user(username: str, password: str, phone: str, role: str, **extra):
 
     user = {
         "username": username,
+        "nickname": extra.pop("nickname", safe_nickname(username)),
         "password": hash_password(password),
         "phone": phone,
         "role": role,
         "approved": extra.pop("approved", True),
         "address": extra.pop("address", None),
         "onlineStatus": extra.pop("onlineStatus", "offline" if role == "driver" else None),
+        "driverStatus": extra.pop("driverStatus", "offline" if role == "driver" else None),
         "dispatchEnabled": extra.pop("dispatchEnabled", True if role == "driver" else None),
         "balance": extra.pop("balance", 0 if role == "driver" else None),
         "bankName": extra.pop("bankName", None),
@@ -872,6 +1096,319 @@ def build_top_regulars(store_id: ObjectId, limit: int = 5) -> list[dict]:
     ]
 
 
+def build_monthly_regulars(store_id: ObjectId, limit: int = 10) -> list[dict]:
+    month_start = now_utc().astimezone(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    ranking: dict[str, dict[str, Any]] = {}
+    for order in db.orders.find({"store_id": store_id, "status": "completed", "created_at": {"$gte": month_start}}):
+        username = order.get("user")
+        if not username:
+            continue
+        user = get_user_by_username(username) or {}
+        current = ranking.setdefault(
+            username,
+            {
+                "username": username,
+                "author_name": user.get("nickname") or safe_nickname(username),
+                "order_count": 0,
+            },
+        )
+        current["order_count"] += 1
+
+    ordered = sorted(ranking.values(), key=lambda item: item["order_count"], reverse=True)[:limit]
+    return [
+        {
+            **item,
+            "regular_level": get_regular_level(item["order_count"]),
+        }
+        for item in ordered
+    ]
+
+
+def grant_sticker(username: str, code: str, reason: str) -> dict | None:
+    sticker_meta = next((item for item in STICKER_CATALOG if item["code"] == code), None)
+    if not sticker_meta:
+        return None
+    if db.user_stickers.find_one({"username": username, "code": code}):
+        return None
+
+    doc = {
+        "username": username,
+        "code": code,
+        "emoji": sticker_meta["emoji"],
+        "title": sticker_meta["title"],
+        "description": sticker_meta["description"],
+        "collection": sticker_meta["collection"],
+        "reason": reason,
+        "earned_at": now_utc(),
+    }
+    result = db.user_stickers.insert_one(doc)
+    doc["_id"] = result.inserted_id
+    create_activity_log(username, "customer", "earn_sticker", f"{sticker_meta['title']} 스티커 획득")
+    return doc
+
+
+def evaluate_customer_stickers(username: str, store: dict, items: list[dict[str, Any]], created_at: datetime):
+    store_name = store.get("name", "")
+    store_category = category_from_text(store_name)
+    user_orders = list(db.orders.find({"user": username}))
+    same_store_orders = len([order for order in user_orders if order.get("store_id") == store["_id"]]) + 1
+    store_category_orders = 1 + len(
+        [order for order in user_orders if category_from_text(order.get("store_name", "")) == store_category]
+    )
+    spicy_hits = sum(
+        1 for order in user_orders for item in order.get("items", []) if "매운" in (item.get("name", "") or "") or "마라" in (item.get("name", "") or "")
+    ) + sum(1 for item in items if "매운" in (item.get("name", "") or "") or "마라" in (item.get("name", "") or ""))
+    local_hour = created_at.astimezone(timezone(timedelta(hours=9))).hour
+
+    if store_category == "치킨" and store_category_orders >= 3:
+        grant_sticker(username, "chicken_lover", "치킨 주문을 꾸준히 즐기고 있어요.")
+    if store_category == "피자" and store_category_orders >= 3:
+        grant_sticker(username, "pizza_master", "피자를 자주 주문했어요.")
+    if store_category == "카페" and store_category_orders >= 3:
+        grant_sticker(username, "cafe_addict", "카페 주문을 자주 했어요.")
+    if same_store_orders >= 5:
+        grant_sticker(username, "regular_king", f"{store_name}를 다섯 번 이상 주문했어요.")
+    if local_hour >= 22 or local_hour < 5:
+        grant_sticker(username, "night_king", "늦은 밤 FEEDY에 접속했어요.")
+    if spicy_hits >= 3:
+        grant_sticker(username, "spicy_challenger", "매운맛 메뉴를 세 번 이상 즐겼어요.")
+
+
+def record_customer_visit(actor: dict):
+    if actor.get("role") != "customer":
+        return
+    today = date_key()
+    exists = db.daily_visits.find_one({"username": actor["username"], "date_key": today})
+    if exists:
+        return
+    db.daily_visits.insert_one(
+        {
+            "username": actor["username"],
+            "date_key": today,
+            "created_at": now_utc(),
+        }
+    )
+    visit_days = db.daily_visits.count_documents({"username": actor["username"]})
+    if visit_days >= 3:
+        grant_sticker(actor["username"], "attendance_fairy", "서로 다른 날짜에 세 번 FEEDY를 방문했어요.")
+
+
+def get_active_customer_events() -> list[dict]:
+    return [serialize_app_event(item) for item in db.app_events.find({"is_active": True, "is_hidden": False}).sort("created_at", -1)]
+
+
+def grant_reward_to_user(username: str, reward_type: str, reward_value: int, title: str, description: str, emoji: str, source: str, source_event_id: ObjectId | None = None):
+    reward = {
+        "username": username,
+        "source": source,
+        "source_event_id": source_event_id,
+        "title": title,
+        "description": description,
+        "emoji": emoji,
+        "reward_type": reward_type,
+        "reward_value": int(reward_value or 0),
+        "status": "active",
+        "claim_date_key": date_key(),
+        "created_at": now_utc(),
+        "used_at": None,
+    }
+    result = db.user_rewards.insert_one(reward)
+    reward["_id"] = result.inserted_id
+    create_activity_log(username, "customer", "grant_reward", f"{title} 보상 획득")
+    return reward
+
+
+def get_available_rewards(username: str):
+    return [
+        serialize_reward(item)
+        for item in db.user_rewards.find({"username": username, "status": "active"}).sort("created_at", -1)
+    ]
+
+
+def get_followed_stores(username: str):
+    follows = list(db.store_follows.find({"username": username}).sort("created_at", -1))
+    results = []
+    for follow in follows:
+        store = db.stores.find_one({"_id": follow.get("store_id")})
+        latest_story = db.store_stories.find_one({"store_id": follow.get("store_id")}, sort=[("created_at", -1)])
+        results.append(
+            {
+                **serialize_follow(follow),
+                "store": serialize_store(store) if store else None,
+                "latest_story": serialize_store_story(latest_story) if latest_story else None,
+            }
+        )
+    return results
+
+
+def get_sticker_book(username: str):
+    earned = [serialize_sticker(item) for item in db.user_stickers.find({"username": username}).sort("earned_at", -1)]
+    earned_codes = {item["code"] for item in earned}
+    collections: dict[str, dict[str, Any]] = {}
+    for item in STICKER_CATALOG:
+        bucket = collections.setdefault(item["collection"], {"name": item["collection"], "total": 0, "earned": 0})
+        bucket["total"] += 1
+        if item["code"] in earned_codes:
+            bucket["earned"] += 1
+
+    return {
+        "catalog": STICKER_CATALOG,
+        "earned": earned,
+        "collections": list(collections.values()),
+    }
+
+
+def get_customer_retention_summary(actor: dict):
+    record_customer_visit(actor)
+    recent_sticker = db.user_stickers.find_one({"username": actor["username"]}, sort=[("earned_at", -1)])
+    lucky_claim = db.user_rewards.find_one(
+        {"username": actor["username"], "source": "lucky_box", "claim_date_key": date_key()},
+        sort=[("created_at", -1)],
+    )
+    return {
+        "events": get_active_customer_events(),
+        "availableRewards": get_available_rewards(actor["username"]),
+        "stickerBook": get_sticker_book(actor["username"]),
+        "followedStores": get_followed_stores(actor["username"]),
+        "todayLuckyBoxClaimed": bool(lucky_claim),
+        "todayLuckyReward": serialize_reward(lucky_claim) if lucky_claim else None,
+        "recentSticker": serialize_sticker(recent_sticker) if recent_sticker else None,
+    }
+
+
+def claim_daily_lucky_box(actor: dict):
+    if actor.get("role") != "customer":
+        raise HTTPException(status_code=403, detail="손님만 참여할 수 있습니다.")
+    existing = db.user_rewards.find_one(
+        {"username": actor["username"], "source": "lucky_box", "claim_date_key": date_key()},
+        sort=[("created_at", -1)],
+    )
+    if existing:
+        return {"alreadyClaimed": True, "reward": serialize_reward(existing)}
+
+    active_events = list(db.app_events.find({"is_active": True, "is_hidden": False}).sort("created_at", -1))
+    if not active_events:
+        reward = grant_reward_to_user(
+            actor["username"],
+            "discount",
+            2000,
+            "오늘의 행운쿠폰",
+            "오늘은 2,000원 할인 쿠폰을 받았어요.",
+            "🍀",
+            "lucky_box",
+        )
+        return {"alreadyClaimed": False, "reward": serialize_reward(reward)}
+
+    event = active_events[now_utc().microsecond % len(active_events)]
+    if event.get("reward_type") == "sticker":
+        sticker = grant_sticker(actor["username"], "attendance_fairy", f"{event.get('title')} 이벤트 보상")
+        reward = grant_reward_to_user(
+            actor["username"],
+            "discount",
+            1000,
+            event.get("title"),
+            f"{event.get('description')} 보너스로 1,000원 할인도 함께 드려요.",
+            event.get("emoji", "🎁"),
+            "lucky_box",
+            event["_id"],
+        )
+        return {"alreadyClaimed": False, "reward": serialize_reward(reward), "sticker": serialize_sticker(sticker) if sticker else None}
+
+    reward = grant_reward_to_user(
+        actor["username"],
+        event.get("reward_type", "discount"),
+        event.get("reward_value", 0),
+        event.get("title"),
+        event.get("description"),
+        event.get("emoji", "🎁"),
+        "lucky_box",
+        event["_id"],
+    )
+    return {"alreadyClaimed": False, "reward": serialize_reward(reward)}
+
+
+def toggle_store_follow(store_id: str, actor: dict):
+    if actor.get("role") != "customer":
+        raise HTTPException(status_code=403, detail="손님만 팔로우할 수 있습니다.")
+    store = get_store_or_404(store_id)
+    existing = db.store_follows.find_one({"store_id": store["_id"], "username": actor["username"]})
+    if existing:
+        db.store_follows.delete_one({"_id": existing["_id"]})
+        create_activity_log(actor["username"], "customer", "unfollow_store", f"{store.get('name')} 팔로우 해제")
+        return {"following": False}
+
+    user = get_user_by_username(actor["username"]) or {}
+    db.store_follows.insert_one(
+        {
+            "store_id": store["_id"],
+            "store_name": store.get("name"),
+            "username": actor["username"],
+            "nickname": user.get("nickname") or safe_nickname(actor["username"]),
+            "created_at": now_utc(),
+        }
+    )
+    create_activity_log(actor["username"], "customer", "follow_store", f"{store.get('name')} 팔로우")
+    return {"following": True}
+
+
+def get_admin_events():
+    return [serialize_app_event(item) for item in db.app_events.find().sort("created_at", -1)]
+
+
+def create_admin_event(data: AppEventCreate, actor: str):
+    event = {
+        "title": data.title.strip(),
+        "description": data.description.strip(),
+        "emoji": data.emoji.strip(),
+        "reward_type": data.rewardType,
+        "reward_value": int(data.rewardValue),
+        "kind": data.kind,
+        "is_active": data.isActive,
+        "is_hidden": data.isHidden,
+        "created_at": now_utc(),
+    }
+    result = db.app_events.insert_one(event)
+    event["_id"] = result.inserted_id
+    create_activity_log(actor, "admin", "create_event", f"{data.title} 이벤트 생성")
+    return serialize_app_event(event)
+
+
+def update_admin_event(event_id: str, data: AppEventUpdate, actor: str):
+    event = db.app_events.find_one({"_id": object_id_or_400(event_id, "event id")})
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    update_data = {}
+    if data.title is not None:
+        update_data["title"] = data.title.strip()
+    if data.description is not None:
+        update_data["description"] = data.description.strip()
+    if data.emoji is not None:
+        update_data["emoji"] = data.emoji.strip()
+    if data.rewardType is not None:
+        update_data["reward_type"] = data.rewardType
+    if data.rewardValue is not None:
+        update_data["reward_value"] = int(data.rewardValue)
+    if data.kind is not None:
+        update_data["kind"] = data.kind
+    if data.isActive is not None:
+        update_data["is_active"] = data.isActive
+    if data.isHidden is not None:
+        update_data["is_hidden"] = data.isHidden
+    if update_data:
+        db.app_events.update_one({"_id": event["_id"]}, {"$set": update_data})
+        create_activity_log(actor, "admin", "update_event", f"{event.get('title')} 이벤트 수정")
+    return serialize_app_event(db.app_events.find_one({"_id": event["_id"]}))
+
+
+def delete_admin_event(event_id: str, actor: str):
+    event = db.app_events.find_one({"_id": object_id_or_400(event_id, "event id")})
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    db.app_events.delete_one({"_id": event["_id"]})
+    create_activity_log(actor, "admin", "delete_event", f"{event.get('title')} 이벤트 삭제")
+    return {"ok": True}
+
+
 def register_user(data: RegisterData):
     role = data.role.strip()
 
@@ -926,9 +1463,11 @@ def login_user(data: LoginData):
         "token": token,
         "role": user["role"],
         "username": user["username"],
+        "nickname": user.get("nickname") or safe_nickname(user["username"]),
         "phone": user.get("phone"),
         "address": user.get("address"),
         "onlineStatus": user.get("onlineStatus"),
+        "driverStatus": normalize_driver_status(user) if user.get("role") == "driver" else None,
         "dispatchEnabled": user.get("dispatchEnabled", True),
         "balance": user.get("balance", 0),
         "storeName": store.get("name") if store else None,
@@ -965,9 +1504,97 @@ def get_activity_logs(limit: int):
     ]
 
 
+def get_self_profile(actor: dict):
+    user = get_user_by_username(actor["username"])
+    if not user or user.get("role") != "customer":
+        raise HTTPException(status_code=404, detail="Customer not found")
+    return serialize_user(user)
+
+
+def update_self_customer_profile(actor: dict, data: CustomerUpdate):
+    user = get_user_by_username(actor["username"])
+    if not user or user.get("role") != "customer":
+        raise HTTPException(status_code=404, detail="Customer not found")
+    updated = update_customer(str(user["_id"]), data)
+    create_activity_log(actor["username"], "customer", "update_profile", "고객 프로필 수정")
+    return updated
+
+
+def create_notice(data: NoticeCreate, actor: str):
+    if data.target not in NOTICE_TARGETS:
+        raise HTTPException(status_code=400, detail="유효하지 않은 공지 대상입니다.")
+    if not data.title.strip() or not data.content.strip():
+        raise HTTPException(status_code=400, detail="제목과 내용을 입력하세요.")
+
+    notice = {
+        "title": data.title.strip(),
+        "content": data.content.strip(),
+        "target": data.target,
+        "created_at": now_utc(),
+        "created_by": actor,
+        "read_by": [],
+    }
+    result = db.notices.insert_one(notice)
+    notice["_id"] = result.inserted_id
+    create_activity_log(actor, "admin", "create_notice", f"{data.target} 대상 공지 작성")
+    return serialize_notice(notice)
+
+
+def get_notices_for_role(role: str):
+    if role == "admin":
+        query = {}
+    elif role == "store":
+        query = {"target": {"$in": ["all", "store"]}}
+    elif role == "driver":
+        query = {"target": {"$in": ["all", "driver"]}}
+    else:
+        query = {"target": "all"}
+
+    return [serialize_notice(item) for item in db.notices.find(query).sort("created_at", -1)]
+
+
+def update_notice(notice_id: str, data: NoticeUpdate, actor: str):
+    notice = get_notice_or_404(notice_id)
+    update_data = {}
+
+    if data.title is not None:
+        update_data["title"] = data.title.strip()
+    if data.content is not None:
+        update_data["content"] = data.content.strip()
+    if data.target is not None:
+        if data.target not in NOTICE_TARGETS:
+            raise HTTPException(status_code=400, detail="유효하지 않은 공지 대상입니다.")
+        update_data["target"] = data.target
+
+    if update_data:
+        db.notices.update_one({"_id": notice["_id"]}, {"$set": update_data})
+        create_activity_log(actor, "admin", "update_notice", f"{notice.get('title')} 공지 수정")
+
+    return serialize_notice(db.notices.find_one({"_id": notice["_id"]}))
+
+
+def delete_notice(notice_id: str, actor: str):
+    notice = get_notice_or_404(notice_id)
+    db.notices.delete_one({"_id": notice["_id"]})
+    create_activity_log(actor, "admin", "delete_notice", f"{notice.get('title')} 공지 삭제")
+    return {"ok": True}
+
+
+def read_notice(notice_id: str, username: str):
+    notice = get_notice_or_404(notice_id)
+    if username not in notice.get("read_by", []):
+        db.notices.update_one({"_id": notice["_id"]}, {"$addToSet": {"read_by": username}})
+    return serialize_notice(db.notices.find_one({"_id": notice["_id"]}))
+
+
 def get_public_stores():
     stores = list(db.stores.find({"approved": True}).sort("created_at", -1))
-    return [serialize_store(store) for store in stores]
+    results = []
+    for store in stores:
+        data = serialize_store(store)
+        data["followers"] = db.store_follows.count_documents({"store_id": store["_id"]})
+        results.append(data)
+    return results
 
 
 def get_store_community(store_id: str, actor: dict | None = None):
@@ -996,11 +1623,14 @@ def get_store_community(store_id: str, actor: dict | None = None):
     viewer_badge = get_store_regular_badge(store["_id"], username) if username else {"orderCount": 0, "level": "일반 손님"}
     support_counts = get_store_support_counts(store["_id"])
     support_flags = get_support_flags(store["_id"], username)
+    follow_count = db.store_follows.count_documents({"store_id": store["_id"]})
+    following_store = bool(username and db.store_follows.find_one({"store_id": store["_id"], "username": username}))
 
     return {
         "store": serialize_store(store),
         "stats": {
             **support_counts,
+            "followers": follow_count,
             "stories": db.store_stories.count_documents({"store_id": store["_id"]}),
             "albums": db.store_album_entries.count_documents({"store_id": store["_id"]}),
             "guestbook": db.store_guestbook_entries.count_documents({"store_id": store["_id"]}),
@@ -1010,9 +1640,10 @@ def get_store_community(store_id: str, actor: dict | None = None):
             "role": actor.get("role") if actor else None,
             "regularLevel": viewer_badge["level"],
             "orderCount": viewer_badge["orderCount"],
+            "followingStore": following_store,
             **support_flags,
         },
-        "topRegulars": build_top_regulars(store["_id"]),
+        "topRegulars": build_monthly_regulars(store["_id"]),
         "ownerStories": story_items,
         "regularNotes": regular_notes,
         "albumEntries": album_entries,
@@ -1205,6 +1836,7 @@ def create_guestbook_entry(store_id: str, actor: dict, data: GuestbookEntryCreat
 
 
 def get_personalized_feed(actor: dict):
+    record_customer_visit(actor)
     visible_stores = [
         store
         for store in db.stores.find({"approved": True}).sort("created_at", -1)
@@ -1529,9 +2161,27 @@ def create_order(order: Order, actor: dict):
 
     items = order.items or []
     address = order.address or actor.get("address")
+    phone = order.phone or actor.get("phone")
     menu_total = calc_total_price(items)
     delivery_fee = int(store.get("deliveryFee", 0) or 0)
-    total_price = menu_total + delivery_fee
+    discount_amount = 0
+    applied_reward = None
+    if order.rewardId:
+        reward_doc = db.user_rewards.find_one(
+            {
+                "_id": object_id_or_400(order.rewardId, "reward id"),
+                "username": actor["username"],
+                "status": "active",
+            }
+        )
+        if not reward_doc:
+            raise HTTPException(status_code=404, detail="사용 가능한 혜택을 찾을 수 없습니다.")
+        applied_reward = reward_doc
+        if reward_doc.get("reward_type") in {"free_delivery", "store_fee_free"}:
+            delivery_fee = 0
+        elif reward_doc.get("reward_type") == "discount":
+            discount_amount = min(int(reward_doc.get("reward_value", 0) or 0), menu_total + delivery_fee)
+    total_price = max(0, menu_total + delivery_fee - discount_amount)
     min_order_amount = int(store.get("minOrderAmount", 0) or 0)
     initial_status = "accepted" if store.get("autoAccept", False) else "pending"
     initial_message = "주문 생성"
@@ -1545,8 +2195,13 @@ def create_order(order: Order, actor: dict):
             detail=f"최소 주문 금액은 {min_order_amount}원입니다.",
         )
 
+    customer_updates = {}
     if address:
-        db.users.update_one({"username": actor["username"]}, {"$set": {"address": address}})
+        customer_updates["address"] = address
+    if phone:
+        customer_updates["phone"] = phone
+    if customer_updates:
+        db.users.update_one({"username": actor["username"]}, {"$set": customer_updates})
 
     payment_doc = {
         "payment_id": build_payment_id(),
@@ -1568,11 +2223,12 @@ def create_order(order: Order, actor: dict):
         "created_at": now_utc(),
         "customer_name": actor["username"],
         "user": actor["username"],
-        "phone": actor.get("phone"),
+        "phone": phone,
         "address": address,
         "items": items,
         "menu_total": menu_total,
         "delivery_fee": delivery_fee,
+        "discount_amount": discount_amount,
         "total_price": total_price,
         "status": initial_status,
         "store_id": store["_id"],
@@ -1583,6 +2239,8 @@ def create_order(order: Order, actor: dict):
         "payment_id": payment_doc["payment_id"],
         "payment_method": order.paymentMethod,
         "payment_status": "paid",
+        "reward_id": str(applied_reward["_id"]) if applied_reward else None,
+        "reward_title": applied_reward.get("title") if applied_reward else None,
         "status_logs": [status_log_entry(initial_status, actor["username"], initial_message)],
         "rejected_drivers": [],
     }
@@ -1601,6 +2259,12 @@ def create_order(order: Order, actor: dict):
         f"{order_doc['order_id']} 결제 완료",
         related_id=order_doc["order_id"],
     )
+    if applied_reward:
+        db.user_rewards.update_one(
+            {"_id": applied_reward["_id"]},
+            {"$set": {"status": "used", "used_at": now_utc()}},
+        )
+    evaluate_customer_stickers(actor["username"], store, items, order_doc["created_at"])
     return {"message": "ok", "order": serialize_order(order_doc)}
 
 
@@ -1641,7 +2305,40 @@ def admin_update_status(order_id: str, data: OrderStatusUpdate, actor: str):
     if data.status not in ORDER_STATUSES:
         raise HTTPException(status_code=400, detail="유효하지 않은 주문 상태입니다.")
     order = get_order_or_404(order_id)
-    append_order_status(order, data.status, actor, "관리자 상태 변경")
+    next_status = data.status
+    previous_driver = order.get("driver_id")
+
+    if next_status in {"assigned", "delivering"} and not previous_driver:
+        raise HTTPException(status_code=400, detail="기사 배정 없이 해당 상태로 변경할 수 없습니다.")
+
+    update_data: dict[str, object] = {"status": next_status}
+    if next_status in {"pending", "accepted", "dispatch_ready", "cancelled"}:
+        update_data["driver_id"] = None
+
+    db.orders.update_one(
+        {"_id": order["_id"]},
+        {
+            "$set": update_data,
+            "$push": {"status_logs": status_log_entry(next_status, actor, "관리자 상태 변경")},
+        },
+    )
+
+    if previous_driver and next_status in {"assigned", "delivering"}:
+        previous_user = get_user_by_username(previous_driver)
+        if previous_user:
+            db.users.update_one(
+                {"_id": previous_user["_id"]},
+                {"$set": {"driverStatus": "delivering", "onlineStatus": "online"}},
+            )
+
+    if previous_driver and next_status in {"pending", "accepted", "dispatch_ready", "completed", "cancelled"}:
+        previous_user = get_user_by_username(previous_driver)
+        if previous_user and get_driver_active_order_count(previous_driver) == 0:
+            db.users.update_one(
+                {"_id": previous_user["_id"]},
+                {"$set": {"driverStatus": "idle", "onlineStatus": "online"}},
+            )
+
     create_activity_log(actor, "admin", "update_order_status", f"{order.get('order_id')} 상태 변경")
     return {"ok": True}
 
@@ -1662,6 +2359,8 @@ def _validate_store_order(order: dict, actor: dict):
 def store_accept(order_id: str, actor: dict):
     order = get_order_or_404(order_id)
     _validate_store_order(order, actor)
+    if order.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="접수 주문만 수락할 수 있습니다.")
     append_order_status(order, "accepted", actor["username"], "가게가 주문을 수락했습니다.")
     create_activity_log(actor["username"], "store", "store_accept", f"{order.get('order_id')} 주문 수락")
     return {"message": "store accepted"}
@@ -1670,6 +2369,8 @@ def store_accept(order_id: str, actor: dict):
 def store_reject(order_id: str, actor: dict):
     order = get_order_or_404(order_id)
     _validate_store_order(order, actor)
+    if order.get("status") not in {"pending", "accepted"}:
+        raise HTTPException(status_code=400, detail="현재 상태에서는 주문을 거절할 수 없습니다.")
     append_order_status(order, "cancelled", actor["username"], "가게가 주문을 거절했습니다.")
     create_activity_log(actor["username"], "store", "store_reject", f"{order.get('order_id')} 주문 거절")
     return {"message": "rejected"}
@@ -1678,6 +2379,8 @@ def store_reject(order_id: str, actor: dict):
 def store_dispatch(order_id: str, actor: dict):
     order = get_order_or_404(order_id)
     _validate_store_order(order, actor)
+    if order.get("status") != "accepted":
+        raise HTTPException(status_code=400, detail="가게 수락 완료 주문만 배차 요청할 수 있습니다.")
     db.orders.update_one(
         {"_id": order["_id"]},
         {
@@ -1690,18 +2393,19 @@ def store_dispatch(order_id: str, actor: dict):
 
 
 def get_driver_current_status(username: str) -> str:
-    active_order = db.orders.find_one(
-        {"driver_id": username, "status": {"$in": ["assigned", "delivering"]}}
-    )
-    return "배달중" if active_order else "대기"
+    user = get_user_by_username(username)
+    return STATUS_TO_KOREAN.get(normalize_driver_status(user), "오프라인")
 
 
 def driver_accept(order_id: str, actor: dict):
     driver_user = get_user_by_username(actor["username"])
-    if driver_user and driver_user.get("onlineStatus") != "online":
-        raise HTTPException(status_code=400, detail="온라인 상태에서만 배차를 수락할 수 있습니다.")
+    driver_status = normalize_driver_status(driver_user)
+    if driver_status != "idle":
+        raise HTTPException(status_code=400, detail="대기중 상태의 기사만 배차를 수락할 수 있습니다.")
     if driver_user and not driver_user.get("dispatchEnabled", True):
         raise HTTPException(status_code=400, detail="배차 수신이 꺼져 있습니다.")
+    if get_driver_active_order_count(actor["username"]) > 0:
+        raise HTTPException(status_code=400, detail="이미 진행 중인 주문이 있습니다.")
 
     order = get_order_or_404(order_id)
     if order.get("status") != "dispatch_ready":
@@ -1714,6 +2418,11 @@ def driver_accept(order_id: str, actor: dict):
             "$push": {"status_logs": status_log_entry("assigned", actor["username"], "기사가 배차를 수락했습니다.")},
         },
     )
+    if driver_user:
+        db.users.update_one(
+            {"_id": driver_user["_id"]},
+            {"$set": {"driverStatus": "delivering", "onlineStatus": "online"}},
+        )
     create_activity_log(actor["username"], "driver", "driver_accept", f"{order.get('order_id')} 배차 수락")
     return {"message": "assigned"}
 
@@ -1792,7 +2501,10 @@ def driver_complete(order_id: str, actor: dict):
         {"_id": order["_id"]},
         {"$set": {"settlement_amount": settlement_amount}},
     )
-    db.users.update_one({"username": actor["username"]}, {"$inc": {"balance": driver_fee}})
+    db.users.update_one(
+        {"username": actor["username"]},
+        {"$inc": {"balance": driver_fee}, "$set": {"driverStatus": "idle", "onlineStatus": "online"}},
+    )
     create_transaction_log(
         "driver_earning",
         driver_fee,
@@ -1821,6 +2533,103 @@ def get_admin_orders(filter_value: str):
     return [serialize_order(order) for order in db.orders.find(get_admin_order_query(filter_value)).sort("created_at", -1)]
 
 
+def build_dispatch_board():
+    orders = [serialize_order(order) for order in db.orders.find().sort("created_at", -1)]
+    return {
+        "pending": [order for order in orders if order["status"] == "pending"],
+        "dispatch_ready": [order for order in orders if order["status"] in {"accepted", "dispatch_ready"}],
+        "delivering": [order for order in orders if order["status"] in {"assigned", "delivering"}],
+        "completed": [order for order in orders if order["status"] == "completed"],
+        "cancelled": [order for order in orders if order["status"] == "cancelled"],
+    }
+
+
+def get_dispatchable_drivers():
+    drivers = []
+    for driver in get_drivers():
+        driver["canDispatch"] = (
+            driver.get("approved", False)
+            and driver.get("dispatchEnabled", True)
+            and driver.get("driverStatus") == "idle"
+            and driver.get("activeOrderCount", 0) == 0
+        )
+        drivers.append(driver)
+    return drivers
+
+
+def get_admin_dispatch_board():
+    return {
+        "queues": build_dispatch_board(),
+        "drivers": get_dispatchable_drivers(),
+    }
+
+
+def validate_driver_for_assignment(driver: dict):
+    if not driver.get("approved", False):
+        raise HTTPException(status_code=400, detail="승인된 기사만 배정할 수 있습니다.")
+    if not driver.get("dispatchEnabled", True):
+        raise HTTPException(status_code=400, detail="배차 수신이 꺼진 기사입니다.")
+    if normalize_driver_status(driver) != "idle":
+        raise HTTPException(status_code=400, detail="대기중 기사만 배정할 수 있습니다.")
+    if get_driver_active_order_count(driver.get("username")) > 0:
+        raise HTTPException(status_code=400, detail="이미 진행 중인 주문이 있는 기사입니다.")
+
+
+def validate_driver_status_transition(username: str, next_status: str):
+    active_order_count = get_driver_active_order_count(username)
+    if active_order_count > 0 and next_status != "delivering":
+        raise HTTPException(status_code=400, detail="진행 중 주문이 있는 기사는 배달중 상태를 유지해야 합니다.")
+    if active_order_count == 0 and next_status == "delivering":
+        raise HTTPException(status_code=400, detail="진행 중 주문 없이 배달중으로 변경할 수 없습니다.")
+
+
+def assign_driver_to_order(order_id: str, payload: ManualDispatchPayload, actor: str, reassign: bool = False):
+    order = get_order_or_404(order_id)
+    allowed_statuses = {"dispatch_ready", "accepted"}
+    if reassign:
+        allowed_statuses = {"dispatch_ready", "assigned"}
+    if order.get("status") not in allowed_statuses:
+        raise HTTPException(status_code=400, detail="현재 상태에서는 기사 배정이 불가능합니다.")
+
+    driver = get_user_by_username(payload.driverUsername)
+    if not driver or driver.get("role") != "driver":
+        raise HTTPException(status_code=404, detail="기사 정보를 찾을 수 없습니다.")
+    validate_driver_for_assignment(driver)
+
+    previous_driver = order.get("driver_id")
+    db.orders.update_one(
+        {"_id": order["_id"]},
+        {
+            "$set": {
+                "driver_id": driver.get("username"),
+                "status": "assigned",
+                "rejected_drivers": [],
+            },
+            "$push": {
+                "status_logs": status_log_entry(
+                    "assigned",
+                    actor,
+                    f"관리자가 {driver.get('username')} 기사로 {'재배차' if reassign else '배정'}했습니다.",
+                )
+            },
+        },
+    )
+    db.users.update_one(
+        {"_id": driver["_id"]},
+        {"$set": {"driverStatus": "delivering", "onlineStatus": "online"}},
+    )
+    if reassign and previous_driver and previous_driver != driver.get("username"):
+        previous_user = get_user_by_username(previous_driver)
+        if previous_user and get_driver_active_order_count(previous_driver) <= 1:
+            db.users.update_one(
+                {"_id": previous_user["_id"]},
+                {"$set": {"driverStatus": "idle", "onlineStatus": "online"}},
+            )
+
+    create_activity_log(actor, "admin", "manual_dispatch", f"{order.get('order_id')} -> {driver.get('username')}")
+    return serialize_order(db.orders.find_one({"_id": order["_id"]}))
+
+
 def get_store_order_query(store_id: ObjectId, filter_value: str):
     if filter_value not in STORE_ORDER_FILTERS:
         raise HTTPException(status_code=400, detail="유효하지 않은 필터입니다.")
@@ -1840,9 +2649,13 @@ def get_drivers():
         data = serialize_user(driver)
         orders = list(db.orders.find({"driver_id": driver.get("username")}).sort("created_at", -1))
         completed_orders = [order for order in orders if order.get("status") == "completed"]
+        active_order_count = get_driver_active_order_count(driver.get("username"))
         data["currentDeliveryStatus"] = get_driver_current_status(driver.get("username"))
+        data["activeOrderCount"] = active_order_count
         data["earnings"] = sum(order.get("driver_fee", 0) for order in completed_orders)
         data["deliveries"] = len(completed_orders)
+        data["todayDeliveries"] = len([order for order in completed_orders if is_today(order.get("created_at"))])
+        data["todayEarnings"] = sum(order.get("driver_fee", 0) for order in completed_orders if is_today(order.get("created_at")))
         data["orders"] = [serialize_order(order) for order in orders]
         drivers.append(data)
     return drivers
@@ -1850,7 +2663,15 @@ def get_drivers():
 
 def create_driver(data: UserCreate):
     return serialize_user(
-        create_user(data.username, data.password, data.phone, "driver", approved=True, onlineStatus="offline")
+        create_user(
+            data.username,
+            data.password,
+            data.phone,
+            "driver",
+            approved=True,
+            onlineStatus="offline",
+            driverStatus="offline",
+        )
     )
 
 
@@ -1865,7 +2686,20 @@ def update_driver(driver_id: str, data: DriverUpdate):
     if data.onlineStatus is not None:
         if data.onlineStatus not in DRIVER_ONLINE_STATUSES:
             raise HTTPException(status_code=400, detail="유효하지 않은 온라인 상태입니다.")
+        mapped_status = "idle" if data.onlineStatus == "online" else "offline"
+        validate_driver_status_transition(driver.get("username"), mapped_status)
         update_data["onlineStatus"] = data.onlineStatus
+        update_data["driverStatus"] = mapped_status
+    if data.driverStatus is not None:
+        if data.driverStatus not in DRIVER_OPERATION_STATUSES:
+            raise HTTPException(status_code=400, detail="유효하지 않은 기사 상태입니다.")
+        validate_driver_status_transition(driver.get("username"), data.driverStatus)
+        update_data["driverStatus"] = data.driverStatus
+        update_data["onlineStatus"] = driver_online_label(data.driverStatus)
+    if data.dispatchEnabled is not None:
+        update_data["dispatchEnabled"] = data.dispatchEnabled
+    if data.approved is not None:
+        update_data["approved"] = data.approved
 
     if update_data:
         db.users.update_one({"_id": driver["_id"]}, {"$set": update_data})
@@ -1918,6 +2752,8 @@ def update_customer(customer_id: str, data: CustomerUpdate):
         db.orders.update_many({"user": customer.get("username")}, {"$set": {"phone": data.phone.strip()}})
     if data.address is not None:
         update_data["address"] = data.address.strip()
+    if data.nickname is not None:
+        update_data["nickname"] = data.nickname.strip()
 
     db.users.update_one({"_id": customer["_id"]}, {"$set": update_data})
     return serialize_user(db.users.find_one({"_id": customer["_id"]}))
@@ -1928,6 +2764,11 @@ def get_stats():
     total_orders = len(orders)
     total_sales = sum(order.get("total_price", 0) for order in orders if order.get("status") == "completed")
     today_orders = sum(1 for order in orders if is_today(order.get("created_at")))
+    today_delivery_fee_revenue = sum(
+        int(order.get("delivery_fee", 0) or 0)
+        for order in orders
+        if order.get("status") == "completed" and is_today(order.get("created_at"))
+    )
     store_sales = {}
     status_count = {}
 
@@ -1947,6 +2788,21 @@ def get_stats():
         "totalOrders": total_orders,
         "totalSales": total_sales,
         "todayOrders": today_orders,
+        "todayDeliveryFeeRevenue": today_delivery_fee_revenue,
+        "dispatchReadyOrders": status_count.get("accepted", 0) + status_count.get("dispatch_ready", 0),
+        "deliveringOrders": status_count.get("assigned", 0) + status_count.get("delivering", 0),
+        "pendingOrders": status_count.get("pending", 0),
+        "acceptedOrders": status_count.get("accepted", 0),
+        "assignedOrders": status_count.get("assigned", 0),
+        "completedOrders": status_count.get("completed", 0),
+        "cancelledOrders": status_count.get("cancelled", 0),
+        "onlineDrivers": len(
+            [
+                driver
+                for driver in db.users.find({"role": "driver"})
+                if normalize_driver_status(driver) in {"idle", "delivering", "resting"}
+            ]
+        ),
         "store_sales": store_sales,
         "status_count": status_count,
     }
@@ -2254,11 +3110,18 @@ def adjust_driver_balance(driver_id: str, amount: int, actor: str, note: str | N
 
 
 def update_driver_online_status(actor: dict, data: DriverOnlineUpdate):
-    if data.onlineStatus not in DRIVER_ONLINE_STATUSES:
-        raise HTTPException(status_code=400, detail="유효하지 않은 온라인 상태입니다.")
-    db.users.update_one({"username": actor["username"]}, {"$set": {"onlineStatus": data.onlineStatus}})
-    create_activity_log(actor["username"], "driver", "toggle_online_status", f"기사 상태를 {data.onlineStatus} 로 변경")
-    return {"ok": True}
+    next_status = data.driverStatus
+    if not next_status and data.onlineStatus:
+        next_status = "idle" if data.onlineStatus == "online" else "offline"
+    if next_status not in DRIVER_OPERATION_STATUSES:
+        raise HTTPException(status_code=400, detail="유효하지 않은 기사 상태입니다.")
+    validate_driver_status_transition(actor["username"], next_status)
+    db.users.update_one(
+        {"username": actor["username"]},
+        {"$set": {"driverStatus": next_status, "onlineStatus": driver_online_label(next_status)}},
+    )
+    create_activity_log(actor["username"], "driver", "toggle_driver_status", f"기사 상태를 {next_status} 로 변경")
+    return get_driver_settings(actor)
 
 
 def get_driver_dashboard(actor: dict):
@@ -2274,6 +3137,7 @@ def get_driver_dashboard(actor: dict):
 
     return {
         "onlineStatus": driver_user.get("onlineStatus", "offline") if driver_user else "offline",
+        "driverStatus": normalize_driver_status(driver_user),
         "dispatchEnabled": driver_user.get("dispatchEnabled", True) if driver_user else True,
         "balance": driver_user.get("balance", 0) if driver_user else 0,
         "todayDeliveries": len(completed_today),
@@ -2285,7 +3149,11 @@ def get_driver_dashboard(actor: dict):
 
 def get_driver_available_orders(actor: dict):
     driver_user = get_user_by_username(actor["username"])
-    if not driver_user or driver_user.get("onlineStatus") != "online" or not driver_user.get("dispatchEnabled", True):
+    if (
+        not driver_user
+        or normalize_driver_status(driver_user) != "idle"
+        or not driver_user.get("dispatchEnabled", True)
+    ):
         return []
     return [
         serialize_order(order)
@@ -2337,6 +3205,7 @@ def get_driver_settings(actor: dict):
 
     return {
         **serialize_user(driver),
+        "driverStatusLabel": STATUS_TO_KOREAN.get(normalize_driver_status(driver), "오프라인"),
         "withdrawalRequests": requests,
     }
 
@@ -2353,6 +3222,13 @@ def update_driver_settings(actor: dict, data: DriverSettingsUpdate):
         if data.onlineStatus not in DRIVER_ONLINE_STATUSES:
             raise HTTPException(status_code=400, detail="유효하지 않은 온라인 상태입니다.")
         update_data["onlineStatus"] = data.onlineStatus
+        update_data["driverStatus"] = "idle" if data.onlineStatus == "online" else "offline"
+    if data.driverStatus is not None:
+        if data.driverStatus not in DRIVER_OPERATION_STATUSES:
+            raise HTTPException(status_code=400, detail="유효하지 않은 기사 상태입니다.")
+        validate_driver_status_transition(actor["username"], data.driverStatus)
+        update_data["driverStatus"] = data.driverStatus
+        update_data["onlineStatus"] = driver_online_label(data.driverStatus)
     if data.dispatchEnabled is not None:
         update_data["dispatchEnabled"] = data.dispatchEnabled
     if data.bankName is not None:
@@ -2462,10 +3338,15 @@ def get_store_my_info(actor: dict):
         "currentOrderCount": get_store_current_order_count(store["_id"]),
         "communityStats": {
             **support_counts,
+            "followers": db.store_follows.count_documents({"store_id": store["_id"]}),
             "stories": db.store_stories.count_documents({"store_id": store["_id"]}),
             "albums": db.store_album_entries.count_documents({"store_id": store["_id"]}),
             "guestbook": db.store_guestbook_entries.count_documents({"store_id": store["_id"]}),
         },
+        "followersPreview": [
+            serialize_follow(item)
+            for item in db.store_follows.find({"store_id": store["_id"]}).sort("created_at", -1).limit(8)
+        ],
         "topupRequests": [
             serialize_topup_request(item)
             for item in db.topup_requests.find({"store_id": store["_id"]}).sort("created_at", -1).limit(10)

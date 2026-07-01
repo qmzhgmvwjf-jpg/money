@@ -9,6 +9,11 @@ export const adminService = {
   createDriver: (payload) => api.post("/drivers", payload).then((res) => res.data),
   updateDriver: (id, payload) => api.put(`/drivers/${id}`, payload).then((res) => res.data),
   deleteDriver: (id) => api.delete(`/drivers/${id}`),
+  getDispatchBoard: () => api.get("/admin/dispatch-board").then((res) => res.data),
+  assignDriver: (orderId, payload) =>
+    api.post(`/admin/orders/${orderId}/assign-driver`, payload).then((res) => res.data),
+  reassignDriver: (orderId, payload) =>
+    api.post(`/admin/orders/${orderId}/reassign-driver`, payload).then((res) => res.data),
   getCustomers: () => api.get("/customers").then((res) => res.data),
   updateCustomer: (id, payload) => api.put(`/customers/${id}`, payload).then((res) => res.data),
   getPendingUsers: () => api.get("/pending-users").then((res) => res.data),
@@ -43,4 +48,8 @@ export const adminService = {
     api.post(`/admin/drivers/${id}/adjust-balance`, payload).then((res) => res.data),
   getTransactions: (limit = 100) =>
     api.get(`/admin/transactions?limit=${limit}`).then((res) => res.data),
+  getEvents: () => api.get("/admin/events").then((res) => res.data),
+  createEvent: (payload) => api.post("/admin/events", payload).then((res) => res.data),
+  updateEvent: (id, payload) => api.put(`/admin/events/${id}`, payload).then((res) => res.data),
+  deleteEvent: (id) => api.delete(`/admin/events/${id}`).then((res) => res.data),
 };
