@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 from fastapi import Query
 
-from backend.core.security import require_roles
-from backend.services.platform_service import Menu, create_menu, delete_menu, get_menu_list, update_menu
+from core.security import require_roles
+from services.platform_service import Menu, create_menu, delete_menu, get_menu_list, update_menu
 
 router = APIRouter()
 
